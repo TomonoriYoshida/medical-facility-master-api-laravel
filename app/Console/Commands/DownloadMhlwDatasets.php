@@ -19,7 +19,7 @@ use Throwable;
 #[Description('Download the latest MHLW medical facility datasets when a newer version is available')]
 class DownloadMhlwDatasets extends Command
 {
-    private const string USER_AGENT = 'MedicalFacilityMasterAPI/1.0 (portfolio project; contact: tomonori.yoshida.works@gmail.com)';
+    private const string USER_AGENT = 'MedicalFacilityMasterAPI/1.0 (+https://github.com/TomonoriYoshida/medical-facility-master-api-laravel)';
 
     public function handle(MhlwDatasetLinkResolver $resolver): int
     {
