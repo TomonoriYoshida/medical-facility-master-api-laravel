@@ -23,8 +23,10 @@ medical_facilities (1) ──< (多) medical_facility_departments
 | `source_id` | string, unique | - | MHLW側の元`ID`（13桁、先頭ゼロ保持のため文字列）。再インポート時のupsertキー |
 | `institution_type` | unsignedTinyInteger | - | `App\Enums\InstitutionType` をcast。1:病院 2:診療所 3:歯科診療所 4:助産所 5:薬局 |
 | `name` | string | - | 正式名称／名称 |
+| `name_normalized` | string | ✓ | `name`をNFKC正規化＋異体字統合（`kanji_variants`参照）した検索用カラム。`MedicalFacilityObserver`が保存時に自動計算するため`#[Fillable]`には含まれない |
 | `name_kana` | string | ✓ | 正式名称（フリガナ） |
 | `short_name` | string | ✓ | 略称 |
+| `short_name_normalized` | string | ✓ | `short_name`の正規化版（`name_normalized`と同じ仕組み。`short_name`が`null`の場合はこちらも`null`のまま） |
 | `short_name_kana` | string | ✓ | 略称（フリガナ） |
 | `name_en` | string | ✓ | 英語表記（ローマ字表記） |
 | `prefecture_code` | string(2) | - | 都道府県コード（生のコード文字列のまま保持） |
@@ -45,7 +47,7 @@ medical_facilities (1) ──< (多) medical_facility_departments
 | `total_beds` | unsignedSmallInteger | ✓ | 合計病床数（病院・診療所のみ） |
 | `created_at` / `updated_at` | timestamp | - | |
 
-インデックス: `institution_type`、`prefecture_code`（`source_id`はuniqueインデックス）
+インデックス: `institution_type`、`prefecture_code`、`name_normalized`、`short_name_normalized`（`source_id`はuniqueインデックス）。`name_normalized`/`short_name_normalized`への単一カラムインデックスは前方一致（`LIKE 'foo%'`）向けであり、部分一致検索（`LIKE '%foo%'`）には効かない。
 
 ### `closure_schedule` の構造例
 
@@ -103,6 +105,33 @@ medical_facilities (1) ──< (多) medical_facility_departments
 }
 ```
 `null`はその曜日/祝日は診療(受付)なしを表す。
+
+## `kanji_variants`
+
+漢字の異体字（例: 髙⇄高）を検索用に統合するためのマスタテーブル。`name_normalized`/`short_name_normalized`の計算に使う。
+
+| カラム | 型 | NULL | 説明 |
+|---|---|---|---|
+| `id` | bigint (PK) | - | 内部主キー |
+| `variant_character` | string(8), unique | - | 異体字（1文字） |
+| `canonical_character` | string(8) | - | 正規化後の標準字体（1文字） |
+| `source` | string | - | `kJapaneseNewVariant` / `kJapaneseOldVariant`（Unicodeコンソーシアムの Unihanデータベース由来）/ `manual`（個別に検証して手動追加したもの） |
+| `created_at` / `updated_at` | timestamp | - | |
+
+368件（自動抽出364件＋手動補完4件）を`KanjiVariantSeeder`でシードする。データの選定経緯:
+
+- 当初検討した「住基統一文字コード 正字対応表」（政府PDF）は、私用領域(PUA)の古いレガシーコードを実在のUnicode文字に対応付けるための表であり、「髙⇄高」のような既存のUnicode文字同士の異体字統合には使えないと判明したため採用しなかった
+- Unicodeコンソーシアム公式のUnihanデータベース（`Unihan_Variants.txt`）の`kJapaneseOldVariant`/`kJapaneseNewVariant`フィールド（日本語の旧字体→新字体に特化、364件）を自動抽出のコアとして採用
+- より広い`kSemanticVariant`フィールドは、多段連鎖させると本来別字として扱うべき文字まで誤って統合してしまうリスクが判明したため自動抽出には使わず、個別に検証した4件（髙→高、﨑→崎、嵜→崎、邉→辺）のみ手動で補完した
+
+### 正規化ロジック（`App\Services\Text\ItaijiNormalizer`）
+
+1. `Normalizer::normalize($value, Normalizer::FORM_KC)`（PHPの`intl`拡張）でNFKC正規化（全角英数字・全角スペース等を半角に統一）
+2. `kanji_variants`のマッピングで異体字を標準字体に置換（`strtr()`、`once()`でインスタンス単位にメモ化）
+
+`MedicalFacility`保存時（`saving`イベント）に`MedicalFacilityObserver`が`name`/`short_name`の変更を検知して自動的に`name_normalized`/`short_name_normalized`を計算する。`DatabaseSeeder`は`WithoutModelEvents`を使用しているため、将来`MedicalFacility`を一括生成するインポート処理で同様の設定を使う場合は、正規化カラムが自動計算されない点に注意（明示的に`ItaijiNormalizer`を呼び出す必要がある）。
+
+異体字変換を別APIとして切り出すことも検討したが、現時点では利用者がこのアプリ1つのみでありYAGNIと判断し、アプリ内に閉じて実装した。
 
 ## 設計上の注意点
 

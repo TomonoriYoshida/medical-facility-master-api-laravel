@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Models\MedicalFacility;
+use App\Observers\MedicalFacilityObserver;
+use App\Services\Text\ItaijiNormalizer;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -11,7 +14,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(ItaijiNormalizer::class);
     }
 
     /**
@@ -19,6 +22,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        MedicalFacility::observe(MedicalFacilityObserver::class);
     }
 }
