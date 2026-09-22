@@ -29,6 +29,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'website_url',
     'closure_schedule',
     'business_hours',
+    'reception_hours',
     'general_beds',
     'sanatorium_beds',
     'sanatorium_beds_medical_insurance',
@@ -81,6 +82,7 @@ class MedicalFacility extends Model
             'longitude' => 'decimal:6',
             'closure_schedule' => 'array',
             'business_hours' => 'array',
+            'reception_hours' => 'array',
         ];
     }
 }

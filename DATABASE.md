@@ -37,8 +37,9 @@ medical_facilities (1) ──< (多) medical_facility_departments
 | `latitude` | decimal(10,6) | ✓ | 所在地座標（緯度） |
 | `longitude` | decimal(10,6) | ✓ | 所在地座標（経度） |
 | `website_url` | string | ✓ | 案内用ホームページアドレス |
-| `closure_schedule` | json | - | 休診(業)スケジュール。毎週の曜日別フラグ・第1〜5週パターン・祝日フラグ・その他休診日をまとめて格納（下記参照） |
-| `business_hours` | json | ✓ | **助産所・薬局のみ使用**。曜日×複数時間帯の営業時間（下記参照）。病院・診療所・歯科診療所は診療科目側で時間を持つためnull |
+| `closure_schedule` | json | - | 休診(業)スケジュール。毎週の曜日別フラグ・第1〜5週パターン・祝日フラグ・その他休診日をまとめて格納（下記参照）。薬局のみ追加キーを持つ |
+| `business_hours` | json | ✓ | **助産所・薬局のみ使用**。曜日×複数時間帯の営業時間（下記参照）。助産所は「就業時間帯」、薬局は「開店時間帯」に対応。病院・診療所・歯科診療所は診療科目側で時間を持つためnull |
+| `reception_hours` | json | ✓ | **助産所のみ使用**（「外来受付時間帯」に対応）。薬局・病院・診療所・歯科診療所はnull。構造は`business_hours`と同じ |
 | `general_beds` | unsignedSmallInteger | ✓ | 一般病床（病院・診療所のみ） |
 | `sanatorium_beds` | unsignedSmallInteger | ✓ | 療養病床（病院・診療所のみ） |
 | `sanatorium_beds_medical_insurance` | unsignedSmallInteger | ✓ | 療養病床のうち医療保険適用（病院・診療所のみ） |
@@ -66,7 +67,9 @@ medical_facilities (1) ──< (多) medical_facility_departments
 ```
 `weekly`/`monthly_pattern`の値は元データと同じ意味（0:休診(業) 1:診療(営業)）。実データでは空文字（未設定）も存在するため、`0`/`1`だけでなく`null`（未設定）も許容する。
 
-### `business_hours` の構造例（助産所・薬局）
+**薬局のみ追加キーを持つ**: 薬局の休診スケジュール欄は他4種別（44列: 週7列＋第1〜5週35列＋祝日1列＋その他1列）と異なり53列で、他の種別にはない「営業日」（8列、祝日列を含む）ブロックが先頭にあり、「定期閉店毎週」にも祝日列が含まれる。一方で既存の「祝日」単独フラグも別途存在し、祝日関連のシグナルが2つ並存する形になっている。この2つを推測でマージせず、`open_weekdays`（曜日別の営業日フラグ、祝日列含む）・`weekly_holiday_flag`（定期閉店毎週の祝日列）という薬局専用の追加キーとしてそのまま保持する。意味の統合が必要になった場合はMHLWの正式なレイアウト定義書を確認してから行う。
+
+### `business_hours` / `reception_hours` の構造例（助産所・薬局）
 
 ```json
 {
@@ -191,5 +194,5 @@ MHLWオープンデータのダウンロード履歴を記録する追記専用�
 - 開設者・運営法人（医療法人など）の情報もこのデータセットには含まれておらず、今回はスコープ外とした。必要になった場合は`medical_organizations`テーブルを新設し`medical_facilities`にnullable FKを追加する形を想定。
 - 都道府県コード・市区町村コードはあえて正規化せず、コード文字列のまま保持する方針とした。
 - 休診日スケジュール・診療/営業時間は、元データでは「1曜日/1パターン=1カラム」で数十〜100カラム超に及ぶが、本設計ではJSONカラムに正規化して保持している。
-- 実CSVインポート機能は複数フェーズに分けて実装中。フェーズ1（スキーマ修正・廃業検知用監視カラムの追加）は完了。フェーズ2（CSV→構造化データのパース層）・フェーズ3（差分検出・upsert層）・フェーズ4（Job・Queue・`mhlw:import`コマンド）は今後対応する。定期クロール・REST API・認証・テストも別フェーズで対応する。
+- 実CSVインポート機能は複数フェーズに分けて実装中。フェーズ1（スキーマ修正・廃業検知用監視カラムの追加）・フェーズ2（CSV→構造化データのパース層、`app/Services/Mhlw/Import/`配下）は完了。フェーズ3（差分検出・upsert層）・フェーズ4（Job・Queue・`mhlw:import`コマンド）は今後対応する。定期クロール・REST API・認証も別フェーズで対応する。
 - 「10年スパンの運用に耐えるか」という観点で見直しを行い、全テーブルの`created_at`/`updated_at`等を当初のMySQL `TIMESTAMP`型（2038年1月19日で範囲外になる32bit Unix時間）から`DATETIME`型（西暦9999年まで対応）に変更した。`occurred_on`/`published_on`は元々`date`型のため対象外。合わせて`medical_facility_departments`に`(medical_facility_id, department_code)`の一意制約を追加し、将来の再インポートで重複行が蓄積しないようにした。
