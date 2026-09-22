@@ -35,19 +35,37 @@ class MedicalFacilityDepartmentFactory extends Factory
      */
     private function weeklyHours(): array
     {
-        $slot = fn (): ?array => fake()->boolean(80)
-            ? ['start' => '09:00', 'end' => '17:30']
-            : null;
-
         return [
-            'mon' => $slot(),
-            'tue' => $slot(),
-            'wed' => $slot(),
-            'thu' => $slot(),
-            'fri' => $slot(),
-            'sat' => $slot(),
-            'sun' => null,
-            'holiday' => null,
+            'mon' => $this->timeSlots(),
+            'tue' => $this->timeSlots(),
+            'wed' => $this->timeSlots(),
+            'thu' => $this->timeSlots(),
+            'fri' => $this->timeSlots(),
+            'sat' => $this->timeSlots(),
+            'sun' => [],
+            'holiday' => [],
         ];
+    }
+
+    /**
+     * Real MHLW speciality data routinely has more than one time band per
+     * day (診療時間帯 1/2/3, e.g. a morning/afternoon split) rather than a
+     * single slot, so this mirrors that with multiple {start, end} entries.
+     *
+     * @return list<array<string, string>>
+     */
+    private function timeSlots(): array
+    {
+        if (! fake()->boolean(80)) {
+            return [];
+        }
+
+        $slots = [['start' => '09:00', 'end' => '12:00']];
+
+        if (fake()->boolean(45)) {
+            $slots[] = ['start' => '14:00', 'end' => '17:30'];
+        }
+
+        return $slots;
     }
 }

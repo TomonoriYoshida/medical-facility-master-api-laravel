@@ -8,12 +8,14 @@ use Database\Factories\MedicalFacilityFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'source_id',
     'institution_type',
     'status',
+    'last_seen_mhlw_dataset_download_id',
     'name',
     'name_kana',
     'short_name',
@@ -55,6 +57,14 @@ class MedicalFacility extends Model
     public function events(): HasMany
     {
         return $this->hasMany(MedicalFacilityEvent::class);
+    }
+
+    /**
+     * @return BelongsTo<MhlwDatasetDownload, $this>
+     */
+    public function lastSeenMhlwDatasetDownload(): BelongsTo
+    {
+        return $this->belongsTo(MhlwDatasetDownload::class, 'last_seen_mhlw_dataset_download_id');
     }
 
     /**
