@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Enums\InstitutionType;
+use App\Enums\MedicalFacilityStatus;
 use App\Models\MedicalFacility;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -25,6 +26,7 @@ class MedicalFacilityFactory extends Factory
         return [
             'source_id' => fake()->unique()->numerify('#############'),
             'institution_type' => $institutionType,
+            'status' => MedicalFacilityStatus::Active,
             'name' => fake()->company().$this->facilitySuffix($institutionType),
             'name_kana' => null,
             'short_name' => null,
