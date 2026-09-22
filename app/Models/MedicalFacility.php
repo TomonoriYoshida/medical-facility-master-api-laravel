@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\InstitutionType;
+use App\Enums\MedicalFacilityStatus;
 use Database\Factories\MedicalFacilityFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'source_id',
     'institution_type',
+    'status',
     'name',
     'name_kana',
     'short_name',
@@ -48,6 +50,14 @@ class MedicalFacility extends Model
     }
 
     /**
+     * @return HasMany<MedicalFacilityEvent, $this>
+     */
+    public function events(): HasMany
+    {
+        return $this->hasMany(MedicalFacilityEvent::class);
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -56,6 +66,7 @@ class MedicalFacility extends Model
     {
         return [
             'institution_type' => InstitutionType::class,
+            'status' => MedicalFacilityStatus::class,
             'latitude' => 'decimal:6',
             'longitude' => 'decimal:6',
             'closure_schedule' => 'array',

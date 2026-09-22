@@ -22,6 +22,7 @@ medical_facilities (1) ──< (多) medical_facility_departments
 | `id` | bigint (PK) | - | 内部主キー |
 | `source_id` | string, unique | - | MHLW側の元`ID`（13桁、先頭ゼロ保持のため文字列）。再インポート時のupsertキー |
 | `institution_type` | unsignedTinyInteger | - | `App\Enums\InstitutionType` をcast。1:病院 2:診療所 3:歯科診療所 4:助産所 5:薬局 |
+| `status` | unsignedTinyInteger | - | `App\Enums\MedicalFacilityStatus` をcast。1:Active 2:Closed。デフォルト1。廃業しても行は物理削除せずこのカラムだけ変える（`medical_facility_events`のFKが指す先を保持するため） |
 | `name` | string | - | 正式名称／名称 |
 | `name_normalized` | string | ✓ | `name`をNFKC正規化＋異体字統合（`kanji_variants`参照）した検索用カラム。`MedicalFacilityObserver`が保存時に自動計算するため`#[Fillable]`には含まれない |
 | `name_kana` | string | ✓ | 正式名称（フリガナ） |
@@ -47,7 +48,7 @@ medical_facilities (1) ──< (多) medical_facility_departments
 | `total_beds` | unsignedSmallInteger | ✓ | 合計病床数（病院・診療所のみ） |
 | `created_at` / `updated_at` | timestamp | - | |
 
-インデックス: `institution_type`、`prefecture_code`、`name_normalized`、`short_name_normalized`（`source_id`はuniqueインデックス）。`name_normalized`/`short_name_normalized`への単一カラムインデックスは前方一致（`LIKE 'foo%'`）向けであり、部分一致検索（`LIKE '%foo%'`）には効かない。
+インデックス: `institution_type`、`status`、`prefecture_code`、`name_normalized`、`short_name_normalized`（`source_id`はuniqueインデックス）。`name_normalized`/`short_name_normalized`への単一カラムインデックスは前方一致（`LIKE 'foo%'`）向けであり、部分一致検索（`LIKE '%foo%'`）には効かない。
 
 ### `closure_schedule` の構造例
 
@@ -105,6 +106,34 @@ medical_facilities (1) ──< (多) medical_facility_departments
 }
 ```
 `null`はその曜日/祝日は診療(受付)なしを表す。
+
+## `medical_facility_events`
+
+施設のライフサイクル履歴（開業・廃業・更新）を記録する追記専用のイベントログ。`medical_facilities`は現在状態のみを保持する構造のままにし（upsert前提）、変化そのものはこちらのテーブルに記録する。`mhlw_dataset_downloads`と同じ「追記型ログ」の設計思想を踏襲している。
+
+| カラム | 型 | NULL | 説明 |
+|---|---|---|---|
+| `id` | bigint (PK) | - | 内部主キー |
+| `medical_facility_id` | FK → `medical_facilities` | - | `restrictOnDelete()`。監査ログとしての性質上、イベント履歴が残っている施設の物理削除を防ぐため（`cascadeOnDelete()`にすると誤削除で履歴ごと消えてしまう） |
+| `department_code` | string | ✓ | `null`＝施設単位のイベント、値あり＝その施設の特定の診療科目に関するイベント。診療科目の行自体は廃止時に物理削除してよい（`payload`に科目名等を残せば追跡できる） |
+| `event_type` | unsignedTinyInteger | - | `App\Enums\MedicalFacilityEventType` をcast。1:Created 2:Removed 3:Updated の3種類のみ（粗い粒度）。「再開」は別種別にせず、「過去に`Removed`イベントがある施設への`Created`」として導出する |
+| `occurred_on` | date | - | 検出元スナップショットの日付。**インポート実行日時（`now()`）ではなく`mhlw_dataset_downloads.published_on`を使うこと** |
+| `payload` | json | ✓ | 変更前後の値の差分（`Updated`）や、その時点のスナップショット（`Created`/`Removed`）など、変更内容の詳細 |
+| `mhlw_dataset_download_id` | FK → `mhlw_dataset_downloads`, nullable | ✓ | `nullOnDelete()`。どのダウンロードスナップショットから検出されたイベントかの出典情報 |
+| `created_at` / `updated_at` | timestamp | - | |
+
+インデックス: `(event_type, department_code, occurred_on)`（等値/IS NULL条件を先、範囲条件を最後に置く定石通りの並び）。「2026年1月に新規開業した施設一覧」は次のクエリで取得できる。
+
+```sql
+SELECT mf.*
+FROM medical_facility_events e
+JOIN medical_facilities mf ON mf.id = e.medical_facility_id
+WHERE e.event_type = 1 -- Created
+  AND e.department_code IS NULL
+  AND e.occurred_on BETWEEN '2026-01-01' AND '2026-01-31'
+```
+
+**重複イベントの冪等性について**: `department_code`がnullableなため、DB側のUNIQUE制約では施設単位イベント（`department_code IS NULL`）の重複を防げない（MySQLはUNIQUE制約内で複数のNULLを別物として扱う）。同じ変化を二重にイベント登録しないようにする重複排除は、将来のインポートロジック側の責務とする（今回はスキーマのみ）。
 
 ## `kanji_variants`
 
