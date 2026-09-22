@@ -23,6 +23,7 @@ medical_facilities (1) ──< (多) medical_facility_departments
 | `source_id` | string, unique | - | MHLW側の元`ID`（13桁、先頭ゼロ保持のため文字列）。再インポート時のupsertキー |
 | `institution_type` | unsignedTinyInteger | - | `App\Enums\InstitutionType` をcast。1:病院 2:診療所 3:歯科診療所 4:助産所 5:薬局 |
 | `status` | unsignedTinyInteger | - | `App\Enums\MedicalFacilityStatus` をcast。1:Active 2:Closed。デフォルト1。廃業しても行は物理削除せずこのカラムだけ変える（`medical_facility_events`のFKが指す先を保持するため） |
+| `last_seen_mhlw_dataset_download_id` | FK → `mhlw_dataset_downloads`, nullable | ✓ | `nullOnDelete()`。廃業検知用の監視カラム。インポート処理が施設を作成・更新・再活性化するたびに、その回の`mhlw_dataset_downloads.id`を記録する。インポート完了後「対象施設種別でActiveなのに今回のIDが記録されていない」行を検索することで、CSVから消えた（＝廃業した）施設を検出する |
 | `name` | string | - | 正式名称／名称 |
 | `name_normalized` | string | ✓ | `name`をNFKC正規化＋異体字統合（`kanji_variants`参照）した検索用カラム。`MedicalFacilityObserver`が保存時に自動計算するため`#[Fillable]`には含まれない |
 | `name_kana` | string | ✓ | 正式名称（フリガナ） |
@@ -48,7 +49,7 @@ medical_facilities (1) ──< (多) medical_facility_departments
 | `total_beds` | unsignedSmallInteger | ✓ | 合計病床数（病院・診療所のみ） |
 | `created_at` / `updated_at` | datetime | - | |
 
-インデックス: `institution_type`、`status`、`prefecture_code`、`name_normalized`、`short_name_normalized`（`source_id`はuniqueインデックス）。`name_normalized`/`short_name_normalized`への単一カラムインデックスは前方一致（`LIKE 'foo%'`）向けであり、部分一致検索（`LIKE '%foo%'`）には効かない。
+インデックス: `institution_type`、`status`、`prefecture_code`、`name_normalized`、`short_name_normalized`（`source_id`はuniqueインデックス）。複合インデックス`medical_facilities_reconcile_index`（`institution_type`, `status`, `last_seen_mhlw_dataset_download_id`）は廃業検知クエリ用。`name_normalized`/`short_name_normalized`への単一カラムインデックスは前方一致（`LIKE 'foo%'`）向けであり、部分一致検索（`LIKE '%foo%'`）には効かない。
 
 ### `closure_schedule` の構造例
 
@@ -63,7 +64,7 @@ medical_facilities (1) ──< (多) medical_facility_departments
   "other_closed_dates": ["01-01", "01-02", "01-03", "12-29", "12-30", "12-31"]
 }
 ```
-`weekly`/`monthly_pattern`の値は元データと同じ意味（0:休診(業) 1:診療(営業)）。
+`weekly`/`monthly_pattern`の値は元データと同じ意味（0:休診(業) 1:診療(営業)）。実データでは空文字（未設定）も存在するため、`0`/`1`だけでなく`null`（未設定）も許容する。
 
 ### `business_hours` の構造例（助産所・薬局）
 
@@ -89,25 +90,28 @@ medical_facilities (1) ──< (多) medical_facility_departments
 | `department_name` | string | - | 診療科目名（例: 内科） |
 | `consultation_hours` | json | - | 曜日別・診療開始/終了時間（下記参照） |
 | `reception_hours` | json | - | 曜日別・外来受付開始/終了時間（構造は`consultation_hours`と同じ） |
+| `last_seen_mhlw_dataset_download_id` | FK → `mhlw_dataset_downloads`, nullable | ✓ | `nullOnDelete()`。`medical_facilities`と同じ仕組みの廃業（診療科目廃止）検知用の監視カラム |
 | `created_at` / `updated_at` | datetime | - | |
 
 一意制約: `(medical_facility_id, department_code)`。将来のMHLW再インポートで同一施設・同一診療科目の行が重複作成されるのを防ぐ。
 
 ### `consultation_hours` / `reception_hours` の構造例
 
+`business_hours`と同じ「曜日ごとに時間帯の配列」形状。実データでは1つの診療科目が複数の時間帯（診療時間帯1〜3、午前/午後など）を持つことが多く（時間帯2は全体の約45%、時間帯3も約2%で使用されており珍しくない）、1日1枠固定の形状では実データの半数近くを欠落させてしまうため、配列形状を採用している。
+
 ```json
 {
-  "mon": { "start": "09:00", "end": "17:30" },
-  "tue": { "start": "09:00", "end": "17:30" },
-  "wed": null,
-  "thu": { "start": "09:00", "end": "17:30" },
-  "fri": { "start": "09:00", "end": "17:30" },
-  "sat": null,
-  "sun": null,
-  "holiday": null
+  "mon": [{ "start": "09:00", "end": "12:00" }, { "start": "14:00", "end": "17:30" }],
+  "tue": [{ "start": "09:00", "end": "12:00" }],
+  "wed": [],
+  "thu": [{ "start": "09:00", "end": "12:00" }, { "start": "14:00", "end": "17:30" }],
+  "fri": [{ "start": "09:00", "end": "12:00" }],
+  "sat": [],
+  "sun": [],
+  "holiday": []
 }
 ```
-`null`はその曜日/祝日は診療(受付)なしを表す。
+空配列はその曜日/祝日は診療(受付)なしを表す。
 
 ## `medical_facility_events`
 
@@ -187,5 +191,5 @@ MHLWオープンデータのダウンロード履歴を記録する追記専用�
 - 開設者・運営法人（医療法人など）の情報もこのデータセットには含まれておらず、今回はスコープ外とした。必要になった場合は`medical_organizations`テーブルを新設し`medical_facilities`にnullable FKを追加する形を想定。
 - 都道府県コード・市区町村コードはあえて正規化せず、コード文字列のまま保持する方針とした。
 - 休診日スケジュール・診療/営業時間は、元データでは「1曜日/1パターン=1カラム」で数十〜100カラム超に及ぶが、本設計ではJSONカラムに正規化して保持している。
-- 現時点ではスキーマ（マイグレーション・モデル・ファクトリ）のみを実装済み。実CSVの自動インポート・定期クロール・REST API・認証・テストは今後の別フェーズで対応する。
+- 実CSVインポート機能は複数フェーズに分けて実装中。フェーズ1（スキーマ修正・廃業検知用監視カラムの追加）は完了。フェーズ2（CSV→構造化データのパース層）・フェーズ3（差分検出・upsert層）・フェーズ4（Job・Queue・`mhlw:import`コマンド）は今後対応する。定期クロール・REST API・認証・テストも別フェーズで対応する。
 - 「10年スパンの運用に耐えるか」という観点で見直しを行い、全テーブルの`created_at`/`updated_at`等を当初のMySQL `TIMESTAMP`型（2038年1月19日で範囲外になる32bit Unix時間）から`DATETIME`型（西暦9999年まで対応）に変更した。`occurred_on`/`published_on`は元々`date`型のため対象外。合わせて`medical_facility_departments`に`(medical_facility_id, department_code)`の一意制約を追加し、将来の再インポートで重複行が蓄積しないようにした。

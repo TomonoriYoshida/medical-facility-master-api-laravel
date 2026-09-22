@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'department_name',
     'consultation_hours',
     'reception_hours',
+    'last_seen_mhlw_dataset_download_id',
 ])]
 class MedicalFacilityDepartment extends Model
 {
@@ -26,6 +27,14 @@ class MedicalFacilityDepartment extends Model
     public function medicalFacility(): BelongsTo
     {
         return $this->belongsTo(MedicalFacility::class);
+    }
+
+    /**
+     * @return BelongsTo<MhlwDatasetDownload, $this>
+     */
+    public function lastSeenMhlwDatasetDownload(): BelongsTo
+    {
+        return $this->belongsTo(MhlwDatasetDownload::class, 'last_seen_mhlw_dataset_download_id');
     }
 
     /**
