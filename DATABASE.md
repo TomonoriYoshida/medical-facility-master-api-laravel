@@ -46,7 +46,7 @@ medical_facilities (1) ──< (多) medical_facility_departments
 | `tuberculosis_beds` | unsignedSmallInteger | ✓ | 結核病床（病院のみ） |
 | `infectious_disease_beds` | unsignedSmallInteger | ✓ | 感染症病床（病院のみ） |
 | `total_beds` | unsignedSmallInteger | ✓ | 合計病床数（病院・診療所のみ） |
-| `created_at` / `updated_at` | timestamp | - | |
+| `created_at` / `updated_at` | datetime | - | |
 
 インデックス: `institution_type`、`status`、`prefecture_code`、`name_normalized`、`short_name_normalized`（`source_id`はuniqueインデックス）。`name_normalized`/`short_name_normalized`への単一カラムインデックスは前方一致（`LIKE 'foo%'`）向けであり、部分一致検索（`LIKE '%foo%'`）には効かない。
 
@@ -89,7 +89,9 @@ medical_facilities (1) ──< (多) medical_facility_departments
 | `department_name` | string | - | 診療科目名（例: 内科） |
 | `consultation_hours` | json | - | 曜日別・診療開始/終了時間（下記参照） |
 | `reception_hours` | json | - | 曜日別・外来受付開始/終了時間（構造は`consultation_hours`と同じ） |
-| `created_at` / `updated_at` | timestamp | - | |
+| `created_at` / `updated_at` | datetime | - | |
+
+一意制約: `(medical_facility_id, department_code)`。将来のMHLW再インポートで同一施設・同一診療科目の行が重複作成されるのを防ぐ。
 
 ### `consultation_hours` / `reception_hours` の構造例
 
@@ -120,7 +122,7 @@ medical_facilities (1) ──< (多) medical_facility_departments
 | `occurred_on` | date | - | 検出元スナップショットの日付。**インポート実行日時（`now()`）ではなく`mhlw_dataset_downloads.published_on`を使うこと** |
 | `payload` | json | ✓ | 変更前後の値の差分（`Updated`）や、その時点のスナップショット（`Created`/`Removed`）など、変更内容の詳細 |
 | `mhlw_dataset_download_id` | FK → `mhlw_dataset_downloads`, nullable | ✓ | `nullOnDelete()`。どのダウンロードスナップショットから検出されたイベントかの出典情報 |
-| `created_at` / `updated_at` | timestamp | - | |
+| `created_at` / `updated_at` | datetime | - | |
 
 インデックス: `(event_type, department_code, occurred_on)`（等値/IS NULL条件を先、範囲条件を最後に置く定石通りの並び）。「2026年1月に新規開業した施設一覧」は次のクエリで取得できる。
 
@@ -135,6 +137,23 @@ WHERE e.event_type = 1 -- Created
 
 **重複イベントの冪等性について**: `department_code`がnullableなため、DB側のUNIQUE制約では施設単位イベント（`department_code IS NULL`）の重複を防げない（MySQLはUNIQUE制約内で複数のNULLを別物として扱う）。同じ変化を二重にイベント登録しないようにする重複排除は、将来のインポートロジック側の責務とする（今回はスキーマのみ）。
 
+## `mhlw_dataset_downloads`
+
+MHLWオープンデータのダウンロード履歴を記録する追記専用のログテーブル。`app/Console/Commands/DownloadMhlwDatasets.php`（`mhlw:download`）が、ファイル名に埋め込まれた日付を前回記録分と比較し、新しいバージョンが見つかった時だけ行を追加する。
+
+| カラム | 型 | NULL | 説明 |
+|---|---|---|---|
+| `id` | bigint (PK) | - | 内部主キー |
+| `dataset_key` | string | - | データセットの識別子（例: `hospital_facility`）。`config/mhlw.php`のキーと一致 |
+| `filename` | string | - | ダウンロードしたファイル名（例: `01-1_hospital_facility_info_20260601.csv.zip`） |
+| `published_on` | date | - | ファイル名から抽出した公開日 |
+| `source_url` | string | - | ダウンロード元URL |
+| `local_path` | string | - | `Storage::disk('local')`上の保存パス（`storage/app/private/mhlw/...`、Git管理外） |
+| `downloaded_at` | datetime | - | 実際にダウンロードした日時 |
+| `created_at` / `updated_at` | datetime | - | |
+
+`unique(['dataset_key', 'filename'])`により、同一バージョンの重複ダウンロード・重複行を防ぐ。
+
 ## `kanji_variants`
 
 漢字の異体字（例: 髙⇄高）を検索用に統合するためのマスタテーブル。`name_normalized`/`short_name_normalized`の計算に使う。
@@ -145,7 +164,7 @@ WHERE e.event_type = 1 -- Created
 | `variant_character` | string(8), unique | - | 異体字（1文字） |
 | `canonical_character` | string(8) | - | 正規化後の標準字体（1文字） |
 | `source` | string | - | `kJapaneseNewVariant` / `kJapaneseOldVariant`（Unicodeコンソーシアムの Unihanデータベース由来）/ `manual`（個別に検証して手動追加したもの） |
-| `created_at` / `updated_at` | timestamp | - | |
+| `created_at` / `updated_at` | datetime | - | |
 
 368件（自動抽出364件＋手動補完4件）を`KanjiVariantSeeder`でシードする。データの選定経緯:
 
@@ -169,3 +188,4 @@ WHERE e.event_type = 1 -- Created
 - 都道府県コード・市区町村コードはあえて正規化せず、コード文字列のまま保持する方針とした。
 - 休診日スケジュール・診療/営業時間は、元データでは「1曜日/1パターン=1カラム」で数十〜100カラム超に及ぶが、本設計ではJSONカラムに正規化して保持している。
 - 現時点ではスキーマ（マイグレーション・モデル・ファクトリ）のみを実装済み。実CSVの自動インポート・定期クロール・REST API・認証・テストは今後の別フェーズで対応する。
+- 「10年スパンの運用に耐えるか」という観点で見直しを行い、全テーブルの`created_at`/`updated_at`等を当初のMySQL `TIMESTAMP`型（2038年1月19日で範囲外になる32bit Unix時間）から`DATETIME`型（西暦9999年まで対応）に変更した。`occurred_on`/`published_on`は元々`date`型のため対象外。合わせて`medical_facility_departments`に`(medical_facility_id, department_code)`の一意制約を追加し、将来の再インポートで重複行が蓄積しないようにした。
