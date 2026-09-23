@@ -35,6 +35,10 @@ final class HokkaidoLinkResolver implements BureauLinkResolverInterface
         '薬局' => RhbCategory::Pharmacy,
     ];
 
+    public function __construct(
+        private readonly IndexPageEraDateParser $eraDateParser = new IndexPageEraDateParser,
+    ) {}
+
     public function resolve(string $html, string $baseUrl): array
     {
         $publishedOn = $this->extractPublishedOn($html);
@@ -69,14 +73,10 @@ final class HokkaidoLinkResolver implements BureauLinkResolverInterface
 
     private function extractPublishedOn(string $html): CarbonImmutable
     {
-        if (! preg_match('/【(明治|大正|昭和|平成|令和)(元|\d+)年(\d+)月(\d+)日現在】/u', $html, $matches)) {
+        if (! preg_match('/【'.IndexPageEraDateParser::PATTERN.'】/u', $html, $matches)) {
             throw new RuntimeException('Unable to find the "current as of" date on the Hokkaido index page.');
         }
 
-        $eraStartYears = ['明治' => 1868, '大正' => 1912, '昭和' => 1926, '平成' => 1989, '令和' => 2019];
-        $eraYear = $matches[2] === '元' ? 1 : (int) $matches[2];
-        $year = $eraStartYears[$matches[1]] + $eraYear - 1;
-
-        return CarbonImmutable::create($year, (int) $matches[3], (int) $matches[4]);
+        return $this->eraDateParser->parse($matches[1], $matches[2], (int) $matches[3], (int) $matches[4]);
     }
 }

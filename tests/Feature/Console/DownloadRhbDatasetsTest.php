@@ -15,7 +15,9 @@ class DownloadRhbDatasetsTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const string INDEX_URL = 'https://kouseikyoku.mhlw.go.jp/hokkaido/gyomu/gyomu/hoken_kikan/code_ichiran.html';
+    private const string HOKKAIDO_INDEX_URL = 'https://kouseikyoku.mhlw.go.jp/hokkaido/gyomu/gyomu/hoken_kikan/code_ichiran.html';
+
+    private const string TOHOKU_INDEX_URL = 'https://kouseikyoku.mhlw.go.jp/tohoku/gyomu/gyomu/hoken_kikan/itiran.html';
 
     private const string ZIP_BODY = "PK\x03\x04fake-xlsx-content";
 
@@ -29,8 +31,12 @@ class DownloadRhbDatasetsTest extends TestCase
         parent::setUp();
 
         Http::fake(function (Request $request) {
-            if ($request->url() === self::INDEX_URL) {
+            if ($request->url() === self::HOKKAIDO_INDEX_URL) {
                 return Http::response($this->indexHtml);
+            }
+
+            if ($request->url() === self::TOHOKU_INDEX_URL) {
+                return Http::response($this->fixture('rhb-tohoku-index.html'));
             }
 
             if (in_array($request->url(), $this->failingUrls, true)) {
@@ -46,7 +52,7 @@ class DownloadRhbDatasetsTest extends TestCase
         Storage::fake('local');
         $this->fakeHttp($this->fixture('rhb-hokkaido-index.html'));
 
-        $this->artisan('rhb:download')->assertExitCode(0);
+        $this->artisan('rhb:download', ['--bureau' => ['hokkaido']])->assertExitCode(0);
 
         $this->assertDatabaseCount('rhb_dataset_downloads', 4);
 
@@ -65,8 +71,8 @@ class DownloadRhbDatasetsTest extends TestCase
         Storage::fake('local');
         $this->fakeHttp($this->fixture('rhb-hokkaido-index.html'));
 
-        $this->artisan('rhb:download')->assertExitCode(0);
-        $this->artisan('rhb:download')->assertExitCode(0);
+        $this->artisan('rhb:download', ['--bureau' => ['hokkaido']])->assertExitCode(0);
+        $this->artisan('rhb:download', ['--bureau' => ['hokkaido']])->assertExitCode(0);
 
         $this->assertDatabaseCount('rhb_dataset_downloads', 4);
         // Run 1: 1 index fetch + 4 file fetches. Run 2: 1 index fetch, all
@@ -82,11 +88,11 @@ class DownloadRhbDatasetsTest extends TestCase
         // filename alone, or updates would be silently skipped forever.
         Storage::fake('local');
         $this->fakeHttp($this->fixture('rhb-hokkaido-index.html'));
-        $this->artisan('rhb:download')->assertExitCode(0);
+        $this->artisan('rhb:download', ['--bureau' => ['hokkaido']])->assertExitCode(0);
 
         $updatedHtml = str_replace('令和8年9月1日現在', '令和8年10月1日現在', $this->fixture('rhb-hokkaido-index.html'));
         $this->fakeHttp($updatedHtml);
-        $this->artisan('rhb:download')->assertExitCode(0);
+        $this->artisan('rhb:download', ['--bureau' => ['hokkaido']])->assertExitCode(0);
 
         $this->assertDatabaseCount('rhb_dataset_downloads', 8);
 
@@ -102,10 +108,29 @@ class DownloadRhbDatasetsTest extends TestCase
             failingUrls: ['https://kouseikyoku.mhlw.go.jp/hokkaido/000499343.xlsx'],
         );
 
-        $this->artisan('rhb:download')->assertExitCode(1);
+        $this->artisan('rhb:download', ['--bureau' => ['hokkaido']])->assertExitCode(1);
 
         $this->assertDatabaseCount('rhb_dataset_downloads', 3);
         $this->assertDatabaseMissing('rhb_dataset_downloads', ['filename' => '000499343.xlsx']);
+    }
+
+    public function test_without_a_bureau_filter_it_downloads_from_every_configured_bureau(): void
+    {
+        Storage::fake('local');
+        $this->fakeHttp($this->fixture('rhb-hokkaido-index.html'));
+
+        $this->artisan('rhb:download')->assertExitCode(0);
+
+        $bureausSeen = RhbDatasetDownload::query()->distinct()->pluck('bureau_code');
+        $this->assertContains(RhbBureau::Hokkaido, $bureausSeen);
+        $this->assertContains(RhbBureau::Tohoku, $bureausSeen);
+    }
+
+    public function test_an_unknown_bureau_key_is_rejected(): void
+    {
+        $this->artisan('rhb:download', ['--bureau' => ['unknown']])->assertExitCode(1);
+
+        $this->assertDatabaseCount('rhb_dataset_downloads', 0);
     }
 
     /**

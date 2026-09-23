@@ -26,11 +26,31 @@ class ImportRhbDatasetsTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_it_batches_one_job_per_category_for_the_configured_bureau(): void
+    public function test_it_batches_one_job_per_category_for_every_configured_bureau_when_unfiltered(): void
     {
         Bus::fake();
 
         $this->artisan('rhb:import')->assertExitCode(0);
+
+        // Asserted against config('rhb.bureaus') itself (not a hardcoded
+        // count) so this test doesn't need updating every time a later
+        // phase adds another bureau.
+        $expectedBureaus = collect(config('rhb.bureaus'))->pluck('bureau')->all();
+
+        Bus::assertBatched(function (PendingBatch $batch) use ($expectedBureaus): bool {
+            $bureausSeen = $batch->jobs->map(fn (ImportRhbFacilityListJob $job) => $job->bureau)->unique()->values()->all();
+
+            return $batch->jobs->count() === count($expectedBureaus) * 3
+                && $batch->jobs->every(fn ($job) => $job instanceof ImportRhbFacilityListJob)
+                && $bureausSeen === $expectedBureaus;
+        });
+    }
+
+    public function test_a_single_filtered_bureau_batches_exactly_one_job_per_category(): void
+    {
+        Bus::fake();
+
+        $this->artisan('rhb:import', ['--bureau' => ['hokkaido']])->assertExitCode(0);
 
         Bus::assertBatched(function (PendingBatch $batch): bool {
             $categories = $batch->jobs->map(fn (ImportRhbFacilityListJob $job) => $job->category);

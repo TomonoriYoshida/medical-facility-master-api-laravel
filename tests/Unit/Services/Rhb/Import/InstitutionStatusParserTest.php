@@ -38,6 +38,23 @@ class InstitutionStatusParserTest extends TestCase
         $this->assertSame('病院', $result['typeLabel']);
     }
 
+    public function test_a_general_hospital_sub_designation_is_normalized_to_the_base_label(): void
+    {
+        // Regression test: real Tohoku data shows "総合病院" (general
+        // hospital) already containing the base word directly on the first
+        // row, with no separate plain-病院 row anywhere in the record
+        // (unlike the 特定機能 case above, where the base word appears on a
+        // later row) -- substring matching handles both shapes uniformly.
+        $rows = [
+            $this->row('総合病院'),
+            $this->row('現存'),
+        ];
+
+        $result = (new InstitutionStatusParser)->parse($rows);
+
+        $this->assertSame('病院', $result['typeLabel']);
+    }
+
     public function test_a_suspended_facility_is_detected(): void
     {
         $rows = [

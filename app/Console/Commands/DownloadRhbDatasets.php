@@ -9,12 +9,14 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
 
-#[Signature('rhb:download')]
+#[Signature('rhb:download
+    {--bureau=* : 対象の局キーを絞り込む（config/rhb.phpのキー、指定なしは全局、繰り返し指定可）}')]
 #[Description('Download the latest regional health bureau (地方厚生局) medical institution lists when a newer version is available')]
 class DownloadRhbDatasets extends Command
 {
@@ -22,9 +24,26 @@ class DownloadRhbDatasets extends Command
 
     public function handle(): int
     {
+        $bureaus = config('rhb.bureaus');
+
+        /** @var list<string> $requested */
+        $requested = $this->option('bureau');
+
+        if ($requested !== []) {
+            $unknown = array_diff($requested, array_keys($bureaus));
+
+            if ($unknown !== []) {
+                $this->components->error('未知の局キーです: '.implode(', ', $unknown));
+
+                return Command::FAILURE;
+            }
+
+            $bureaus = Arr::only($bureaus, $requested);
+        }
+
         $hasFailure = false;
 
-        foreach (config('rhb.bureaus') as $bureauKey => $meta) {
+        foreach ($bureaus as $bureauKey => $meta) {
             if (! $this->processBureau($bureauKey, $meta)) {
                 $hasFailure = true;
             }
