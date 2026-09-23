@@ -6,6 +6,7 @@ use App\Enums\RhbBureau;
 use App\Enums\RhbCategory;
 use Database\Factories\RhbDatasetDownloadFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -25,16 +26,32 @@ class RhbDatasetDownload extends Model
     use HasFactory;
 
     /**
-     * Get the most recently published download recorded for a bureau +
-     * category pair.
+     * Get the current download(s) recorded for a bureau + category pair --
+     * the most recently published row per distinct filename, not every
+     * row ever recorded. Two distinct considerations this reconciles:
+     *
+     * - A single category can legitimately have more than one
+     *   concurrently-current file (e.g. Hokkaido publishes hospital and
+     *   clinic data as two separate files, both under
+     *   RhbCategory::Medical) -- so there is no single "the latest" row
+     *   across the whole category.
+     * - Some bureaus (Hokkaido confirmed) never change a document's
+     *   filename between monthly updates, so successive `rhb:download`
+     *   runs accumulate multiple rows sharing the same filename but
+     *   different published_on -- only the most recent one per filename
+     *   is "current"; the rest are historical and must not be reprocessed.
+     *
+     * @return Collection<int, self>
      */
-    public static function latestFor(RhbBureau $bureau, RhbCategory $category): ?self
+    public static function allFor(RhbBureau $bureau, RhbCategory $category): Collection
     {
         return static::query()
             ->where('bureau_code', $bureau)
             ->where('category', $category)
             ->orderByDesc('published_on')
-            ->first();
+            ->get()
+            ->unique('filename')
+            ->values();
     }
 
     /**

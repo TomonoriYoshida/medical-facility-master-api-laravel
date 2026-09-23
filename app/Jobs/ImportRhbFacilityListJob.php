@@ -1,0 +1,121 @@
+<?php
+
+namespace App\Jobs;
+
+use App\Enums\InstitutionType;
+use App\Enums\RhbBureau;
+use App\Enums\RhbCategory;
+use App\Models\RhbDatasetDownload;
+use App\Services\Rhb\Download\BundleExpanderInterface;
+use App\Services\Rhb\Import\InsuredFacilityDatasetRowSource;
+use App\Services\Rhb\Sync\FacilityClosureReconciler;
+use App\Services\Rhb\Sync\FacilityUpserter;
+use Illuminate\Bus\Batchable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Log;
+use RuntimeException;
+use Throwable;
+
+/**
+ * Imports every currently-known download for one (bureau, category) pair
+ * end to end: expands each download into its file units (a bureau may
+ * publish more than one file per category -- Hokkaido publishes hospital
+ * and clinic data as two separate files, both RhbCategory::Medical),
+ * upserts every row, then runs closure reconciliation once per
+ * (institution type, prefecture) combination actually encountered.
+ *
+ * Unlike the old MHLW pipeline, there is only one job type: this data
+ * source has no separate "speciality" dataset requiring a chained
+ * facility-then-department job pair, so no chain/ordering dependency
+ * exists between different (bureau, category) jobs -- they are fully
+ * independent and can run in any order or in parallel.
+ */
+class ImportRhbFacilityListJob implements ShouldQueue
+{
+    use Batchable, Queueable;
+
+    public int $tries = 3;
+
+    public int $backoff = 15;
+
+    public function __construct(
+        public readonly RhbBureau $bureau,
+        public readonly RhbCategory $category,
+    ) {}
+
+    public function handle(
+        InsuredFacilityDatasetRowSource $rowSource,
+        FacilityUpserter $upserter,
+        FacilityClosureReconciler $reconciler,
+    ): void {
+        if ($this->batch()?->cancelled()) {
+            return;
+        }
+
+        $downloads = RhbDatasetDownload::allFor($this->bureau, $this->category);
+
+        if ($downloads->isEmpty()) {
+            Log::warning('rhb:import: no download recorded, skipping.', [
+                'bureau' => $this->bureau->name,
+                'category' => $this->category->name,
+            ]);
+
+            return;
+        }
+
+        $expander = $this->resolveExpander();
+
+        $counts = array_fill_keys(['created', 'reopened', 'updated', 'unchanged', 'skipped'], 0);
+
+        /** @var array<string, array{institutionType: InstitutionType, prefectureCode: string, download: RhbDatasetDownload}> $reconcileTargets */
+        $reconcileTargets = [];
+
+        foreach ($downloads as $download) {
+            foreach ($expander->expand($download) as $unit) {
+                foreach ($rowSource->rows($unit->xlsxPath, $unit->category, $unit->bureau, $unit->prefectureCode, $unit->sheetName) as $mapped) {
+                    try {
+                        $result = $upserter->upsert($mapped, $download);
+                        $counts[strtolower($result['outcome']->name)]++;
+
+                        $key = "{$mapped['institution_type']->value}:{$unit->prefectureCode}";
+                        $reconcileTargets[$key] = [
+                            'institutionType' => $mapped['institution_type'],
+                            'prefectureCode' => $unit->prefectureCode,
+                            'download' => $download,
+                        ];
+                    } catch (Throwable $e) {
+                        $counts['skipped']++;
+                        Log::error('rhb:import: failed to upsert facility row', [
+                            'bureau' => $this->bureau->name,
+                            'category' => $this->category->name,
+                            'facility_code' => $mapped['facility_code'] ?? null,
+                            'exception' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
+        }
+
+        foreach ($reconcileTargets as $target) {
+            $reconciler->reconcile($target['institutionType'], $target['prefectureCode'], $target['download']);
+        }
+
+        Log::info('rhb:import: dataset finished', [
+            'bureau' => $this->bureau->name,
+            'category' => $this->category->name,
+            ...$counts,
+        ]);
+    }
+
+    private function resolveExpander(): BundleExpanderInterface
+    {
+        foreach (config('rhb.bureaus') as $meta) {
+            if ($meta['bureau'] === $this->bureau) {
+                return app($meta['expander']);
+            }
+        }
+
+        throw new RuntimeException("No configuration found for bureau \"{$this->bureau->name}\".");
+    }
+}
