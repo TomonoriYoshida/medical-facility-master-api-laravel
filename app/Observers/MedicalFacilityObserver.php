@@ -10,8 +10,7 @@ class MedicalFacilityObserver
     public function __construct(private readonly ItaijiNormalizer $normalizer) {}
 
     /**
-     * Keep name_normalized/short_name_normalized in sync whenever the
-     * source columns change.
+     * Keep name_normalized in sync whenever the source column changes.
      *
      * Note: DatabaseSeeder uses WithoutModelEvents, so any future bulk
      * importer that reuses that trait (or otherwise bypasses Eloquent
@@ -22,10 +21,6 @@ class MedicalFacilityObserver
     {
         if ($medicalFacility->isDirty('name')) {
             $medicalFacility->name_normalized = $this->normalizer->normalize($medicalFacility->name);
-        }
-
-        if ($medicalFacility->isDirty('short_name') && $medicalFacility->short_name !== null) {
-            $medicalFacility->short_name_normalized = $this->normalizer->normalize($medicalFacility->short_name);
         }
     }
 }

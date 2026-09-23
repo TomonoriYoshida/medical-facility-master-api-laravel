@@ -1,169 +1,99 @@
 # データベース設計
 
-医療施設マスタAPIのテーブル構造。厚生労働省「医療機能情報提供制度」オープンデータ
-(https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/newpage_43373.html)
-の実データ構造に基づいて設計している。
+医療施設マスタAPIのテーブル構造。地方厚生局（都道府県を8ブロックに分けて管轄する厚生労働省の地方支分部局）が
+それぞれ公開する「コード内容別医療機関一覧表」（保険医療機関・保険薬局の指定一覧）の実データ構造に基づいて設計している。
+
+当初は厚生労働省「医療機能情報提供制度」オープンデータCSVを情報源としていたが、電話番号・郵便番号・開設者情報が
+欠落しているという構造的制約があったため、より情報量の多い地方厚生局データへ全面的に切り替えた（詳細は本ファイル末尾
+「データソースの変遷」参照）。
 
 ## ER概要
 
 ```
-medical_facilities (1) ──< (多) medical_facility_departments
+medical_facilities (1) ──< (多) medical_facility_events
 ```
 
-`medical_facility_departments` は病院・診療所・歯科診療所のみが行を持つ。助産所・薬局は
-診療科目という概念を持たず、`medical_facilities.business_hours` に直接営業時間を持つ。
+診療科目は`medical_facilities.department_categories`に大分類タグの配列として直接持たせており、
+別テーブルには分離していない（旧`medical_facility_departments`は廃止）。
 
 ## `medical_facilities`
 
-施設マスタのコアテーブル。全5施設種別（病院／診療所／歯科診療所／助産所／薬局）で共通。
+施設マスタのコアテーブル。医科（病院・診療所）・歯科診療所・薬局で共通（助産所は保険医療機関制度の対象外のため扱わない）。
 
 | カラム | 型 | NULL | 説明 |
 |---|---|---|---|
 | `id` | bigint (PK) | - | 内部主キー |
-| `source_id` | string, unique | - | MHLW側の元`ID`（13桁、先頭ゼロ保持のため文字列）。再インポート時のupsertキー |
-| `institution_type` | unsignedTinyInteger | - | `App\Enums\InstitutionType` をcast。1:病院 2:診療所 3:歯科診療所 4:助産所 5:薬局 |
-| `status` | unsignedTinyInteger | - | `App\Enums\MedicalFacilityStatus` をcast。1:Active 2:Closed。デフォルト1。廃業しても行は物理削除せずこのカラムだけ変える（`medical_facility_events`のFKが指す先を保持するため） |
-| `last_seen_mhlw_dataset_download_id` | FK → `mhlw_dataset_downloads`, nullable | ✓ | `nullOnDelete()`。廃業検知用の監視カラム。インポート処理が施設を作成・更新・再活性化するたびに、その回の`mhlw_dataset_downloads.id`を記録する。インポート完了後「対象施設種別でActiveなのに今回のIDが記録されていない」行を検索することで、CSVから消えた（＝廃業した）施設を検出する |
-| `name` | string | - | 正式名称／名称 |
+| `facility_code` | string(7) | - | 地方厚生局発行の医療機関コード。区切り文字（カンマ/ハイフン等、局によって表記が異なる）を除去した数字7桁に正規化して保持。再インポート時のupsertキーの一部 |
+| `bureau_code` | unsignedTinyInteger | - | `App\Enums\RhbBureau` をcast。どの地方厚生局が発行したコードかを表す。`facility_code`は局をまたいで一意である保証が未検証のため、`(bureau_code, facility_code)`の複合キーで一意性を担保している |
+| `institution_type` | unsignedTinyInteger | - | `App\Enums\InstitutionType` をcast。1:病院 2:診療所 3:歯科診療所 4:薬局 |
+| `status` | unsignedTinyInteger | - | `App\Enums\MedicalFacilityStatus` をcast。1:Active 2:Closed 3:Suspended（休止）。デフォルト1。実データで休止は0.72%出現する実在のステータスで、廃業（Closed）とは意味が異なる（施設情報・診療科目は保持されたまま指定効力のみ停止している状態） |
+| `last_seen_rhb_dataset_download_id` | FK → `rhb_dataset_downloads`, nullable | ✓ | `nullOnDelete()`。廃業検知用の監視カラム。インポート処理が施設を作成・更新・再活性化するたびに、その回の`rhb_dataset_downloads.id`を記録する |
+| `name` | string | - | 医療機関名称 |
 | `name_normalized` | string | ✓ | `name`をNFKC正規化＋異体字統合（`kanji_variants`参照）した検索用カラム。`MedicalFacilityObserver`が保存時に自動計算するため`#[Fillable]`には含まれない |
-| `name_kana` | string | ✓ | 正式名称（フリガナ） |
-| `short_name` | string | ✓ | 略称 |
-| `short_name_normalized` | string | ✓ | `short_name`の正規化版（`name_normalized`と同じ仕組み。`short_name`が`null`の場合はこちらも`null`のまま） |
-| `short_name_kana` | string | ✓ | 略称（フリガナ） |
-| `name_en` | string | ✓ | 英語表記（ローマ字表記） |
-| `prefecture_code` | string(2) | - | 都道府県コード（生のコード文字列のまま保持） |
-| `city_code` | string(3) | - | 市区町村コード（生のコード文字列のまま保持） |
+| `prefecture_code` | string(2) | - | 都道府県コード |
+| `postal_code` | string(8) | ✓ | 郵便番号（`〒NNN－NNNN`形式の原本から抽出） |
 | `address` | string | - | 所在地 |
-| `latitude` | decimal(10,6) | ✓ | 所在地座標（緯度） |
-| `longitude` | decimal(10,6) | ✓ | 所在地座標（経度） |
-| `website_url` | string | ✓ | 案内用ホームページアドレス |
-| `closure_schedule` | json | - | 休診(業)スケジュール。毎週の曜日別フラグ・第1〜5週パターン・祝日フラグ・その他休診日をまとめて格納（下記参照）。薬局のみ追加キーを持つ |
-| `business_hours` | json | ✓ | **助産所・薬局のみ使用**。曜日×複数時間帯の営業時間（下記参照）。助産所は「就業時間帯」、薬局は「開店時間帯」に対応。病院・診療所・歯科診療所は診療科目側で時間を持つためnull |
-| `reception_hours` | json | ✓ | **助産所のみ使用**（「外来受付時間帯」に対応）。薬局・病院・診療所・歯科診療所はnull。構造は`business_hours`と同じ |
-| `general_beds` | unsignedSmallInteger | ✓ | 一般病床（病院・診療所のみ） |
-| `sanatorium_beds` | unsignedSmallInteger | ✓ | 療養病床（病院・診療所のみ） |
-| `sanatorium_beds_medical_insurance` | unsignedSmallInteger | ✓ | 療養病床のうち医療保険適用（病院・診療所のみ） |
-| `sanatorium_beds_care_insurance` | unsignedSmallInteger | ✓ | 療養病床のうち介護保険適用（病院・診療所のみ） |
-| `psychiatric_beds` | unsignedSmallInteger | ✓ | 精神病床（病院のみ） |
-| `tuberculosis_beds` | unsignedSmallInteger | ✓ | 結核病床（病院のみ） |
-| `infectious_disease_beds` | unsignedSmallInteger | ✓ | 感染症病床（病院のみ） |
-| `total_beds` | unsignedSmallInteger | ✓ | 合計病床数（病院・診療所のみ） |
+| `latitude` | decimal(10,6) | ✓ | 所在地座標（緯度）。地方厚生局データには含まれないため、この経路からのインポートでは常にnull。将来のジオコーディング機能に備えてカラムのみ温存 |
+| `longitude` | decimal(10,6) | ✓ | 所在地座標（経度）。同上 |
+| `phone_number` | string | ✓ | 電話番号 |
+| `founder_name` | string | ✓ | 開設者（法人名＋代表者名等、原本の表記をそのまま保持） |
+| `administrator_name` | string | ✓ | 管理者名 |
+| `designated_on` | date | ✓ | 指定年月日（最初の指定日） |
+| `designation_history` | json, nullable | ✓ | 指定年月日欄に埋め込まれた処理履歴（新規／組織変更／交代等の事由と日付のペアの配列）。**`medical_facility_events`には流し込まない**——events テーブルは「自分（インポーター）が今回の同期で検知した変化」を意味する追記専用ログであり、この履歴はインポート開始以前から存在する情報のため意味が異なる。単なるマップ済み属性として通常の差分検出（`AttributeDiff`）の対象にする |
+| `bed_counts` | json, nullable | ✓ | 病床種別（療養／一般／精神等）→ 病床数のラベル付き辞書。薬局は常にnull |
+| `department_categories` | json, nullable | ✓ | `App\Enums\DepartmentBaseCategory`値の配列（`AsEnumCollection`キャスト）。医科・歯科のみ、薬局は常に空配列。原本の診療科目欄は「基本診療科名＋自由な修飾語」の組み合わせ命名が医療法施行規則で公式に許容されており事実上自由記述に近いため、修飾語を含む完全一致ではなく「大分類（内科系・外科系など）のどれに該当するか」というマーカーマッチによる粗い分類に留めている（実データ検証で出現件数の96.3%を分類可能と確認済み。完全一致の復元は制度上原理的に不可能） |
 | `created_at` / `updated_at` | datetime | - | |
 
-インデックス: `institution_type`、`status`、`prefecture_code`、`name_normalized`、`short_name_normalized`（`source_id`はuniqueインデックス）。複合インデックス`medical_facilities_reconcile_index`（`institution_type`, `status`, `last_seen_mhlw_dataset_download_id`）は廃業検知クエリ用。`name_normalized`/`short_name_normalized`への単一カラムインデックスは前方一致（`LIKE 'foo%'`）向けであり、部分一致検索（`LIKE '%foo%'`）には効かない。
-
-### `closure_schedule` の構造例
-
-```json
-{
-  "weekly": { "mon": 1, "tue": 1, "wed": 1, "thu": 1, "fri": 1, "sat": 0, "sun": 0 },
-  "monthly_pattern": {
-    "1": { "mon": 1, "tue": 1, "wed": 1, "thu": 1, "fri": 1, "sat": 1, "sun": 0 },
-    "2": { "...": "..." }
-  },
-  "holiday": 0,
-  "other_closed_dates": ["01-01", "01-02", "01-03", "12-29", "12-30", "12-31"]
-}
-```
-`weekly`/`monthly_pattern`の値は元データと同じ意味（0:休診(業) 1:診療(営業)）。実データでは空文字（未設定）も存在するため、`0`/`1`だけでなく`null`（未設定）も許容する。
-
-**薬局のみ追加キーを持つ**: 薬局の休診スケジュール欄は他4種別（44列: 週7列＋第1〜5週35列＋祝日1列＋その他1列）と異なり53列で、他の種別にはない「営業日」（8列、祝日列を含む）ブロックが先頭にあり、「定期閉店毎週」にも祝日列が含まれる。一方で既存の「祝日」単独フラグも別途存在し、祝日関連のシグナルが2つ並存する形になっている。この2つを推測でマージせず、`open_weekdays`（曜日別の営業日フラグ、祝日列含む）・`weekly_holiday_flag`（定期閉店毎週の祝日列）という薬局専用の追加キーとしてそのまま保持する。意味の統合が必要になった場合はMHLWの正式なレイアウト定義書を確認してから行う。
-
-### `business_hours` / `reception_hours` の構造例（助産所・薬局）
-
-```json
-{
-  "mon": [{ "start": "09:00", "end": "13:00" }, { "start": "14:00", "end": "18:00" }],
-  "tue": [{ "start": "09:00", "end": "13:00" }],
-  "...": "...",
-  "sun": [],
-  "holiday": []
-}
-```
-
-## `medical_facility_departments`
-
-診療科目テーブル。病院・診療所・歯科診療所のみ行を持つ（助産所・薬局には対応する診療科目がない）。
-
-| カラム | 型 | NULL | 説明 |
-|---|---|---|---|
-| `id` | bigint (PK) | - | 内部主キー |
-| `medical_facility_id` | foreignId | - | `medical_facilities.id` へのFK。`cascadeOnDelete` |
-| `department_code` | string | - | 診療科目コード |
-| `department_name` | string | - | 診療科目名（例: 内科） |
-| `consultation_hours` | json | - | 曜日別・診療開始/終了時間（下記参照） |
-| `reception_hours` | json | - | 曜日別・外来受付開始/終了時間（構造は`consultation_hours`と同じ） |
-| `last_seen_mhlw_dataset_download_id` | FK → `mhlw_dataset_downloads`, nullable | ✓ | `nullOnDelete()`。`medical_facilities`と同じ仕組みの廃業（診療科目廃止）検知用の監視カラム |
-| `created_at` / `updated_at` | datetime | - | |
-
-一意制約: `(medical_facility_id, department_code)`。将来のMHLW再インポートで同一施設・同一診療科目の行が重複作成されるのを防ぐ。
-
-### `consultation_hours` / `reception_hours` の構造例
-
-`business_hours`と同じ「曜日ごとに時間帯の配列」形状。実データでは1つの診療科目が複数の時間帯（診療時間帯1〜3、午前/午後など）を持つことが多く（時間帯2は全体の約45%、時間帯3も約2%で使用されており珍しくない）、1日1枠固定の形状では実データの半数近くを欠落させてしまうため、配列形状を採用している。
-
-```json
-{
-  "mon": [{ "start": "09:00", "end": "12:00" }, { "start": "14:00", "end": "17:30" }],
-  "tue": [{ "start": "09:00", "end": "12:00" }],
-  "wed": [],
-  "thu": [{ "start": "09:00", "end": "12:00" }, { "start": "14:00", "end": "17:30" }],
-  "fri": [{ "start": "09:00", "end": "12:00" }],
-  "sat": [],
-  "sun": [],
-  "holiday": []
-}
-```
-空配列はその曜日/祝日は診療(受付)なしを表す。
+インデックス: `institution_type`、`status`、`prefecture_code`、`name_normalized`。`unique(bureau_code, facility_code)`。複合インデックス`medical_facilities_reconcile_index`（`institution_type`, `prefecture_code`, `status`, `last_seen_rhb_dataset_download_id`）は廃業検知クエリ用——`prefecture_code`を含むのは、1件の`rhb_dataset_downloads`行が複数県をまとめて束ねる局（東北・関東信越等）が存在するため、廃業検知が誤って別県の施設まで対象にしないためのスコープ絞り込み。
 
 ## `medical_facility_events`
 
-施設のライフサイクル履歴（開業・廃業・更新）を記録する追記専用のイベントログ。`medical_facilities`は現在状態のみを保持する構造のままにし（upsert前提）、変化そのものはこちらのテーブルに記録する。`mhlw_dataset_downloads`と同じ「追記型ログ」の設計思想を踏襲している。
+施設のライフサイクル履歴（開業・廃業・更新）を記録する追記専用のイベントログ。`medical_facilities`は現在状態のみを保持する構造のままにし（upsert前提）、変化そのものはこちらのテーブルに記録する。`rhb_dataset_downloads`と同じ「追記型ログ」の設計思想を踏襲している。
 
 | カラム | 型 | NULL | 説明 |
 |---|---|---|---|
 | `id` | bigint (PK) | - | 内部主キー |
-| `medical_facility_id` | FK → `medical_facilities` | - | `restrictOnDelete()`。監査ログとしての性質上、イベント履歴が残っている施設の物理削除を防ぐため（`cascadeOnDelete()`にすると誤削除で履歴ごと消えてしまう） |
-| `department_code` | string | ✓ | `null`＝施設単位のイベント、値あり＝その施設の特定の診療科目に関するイベント。診療科目の行自体は廃止時に物理削除してよい（`payload`に科目名等を残せば追跡できる） |
-| `event_type` | unsignedTinyInteger | - | `App\Enums\MedicalFacilityEventType` をcast。1:Created 2:Removed 3:Updated の3種類のみ（粗い粒度）。「再開」は別種別にせず、「過去に`Removed`イベントがある施設への`Created`」として導出する |
-| `occurred_on` | date | - | 検出元スナップショットの日付。**インポート実行日時（`now()`）ではなく`mhlw_dataset_downloads.published_on`を使うこと** |
+| `medical_facility_id` | FK → `medical_facilities` | - | `restrictOnDelete()`。監査ログとしての性質上、イベント履歴が残っている施設の物理削除を防ぐため |
+| `event_type` | unsignedTinyInteger | - | `App\Enums\MedicalFacilityEventType` をcast。1:Created 2:Removed 3:Updated の3種類のみ（粗い粒度）。「再開」は別種別にせず、「過去に`Removed`イベントがある施設への`Created`」として導出する。休止⇔現存の切り替えも特別扱いせず、通常の`Updated`イベント（`payload`内の`status`変化）として記録する |
+| `occurred_on` | date | - | 検出元スナップショットの日付。**インポート実行日時（`now()`）ではなく`rhb_dataset_downloads.published_on`を使うこと** |
 | `payload` | json | ✓ | 変更前後の値の差分（`Updated`）や、その時点のスナップショット（`Created`/`Removed`）など、変更内容の詳細 |
-| `mhlw_dataset_download_id` | FK → `mhlw_dataset_downloads`, nullable | ✓ | `nullOnDelete()`。どのダウンロードスナップショットから検出されたイベントかの出典情報 |
+| `rhb_dataset_download_id` | FK → `rhb_dataset_downloads`, nullable | ✓ | `nullOnDelete()`。どのダウンロードスナップショットから検出されたイベントかの出典情報 |
 | `created_at` / `updated_at` | datetime | - | |
 
-インデックス: `(event_type, department_code, occurred_on)`（等値/IS NULL条件を先、範囲条件を最後に置く定石通りの並び）。「2026年1月に新規開業した施設一覧」は次のクエリで取得できる。
+インデックス: `(event_type, occurred_on)`。「2026年1月に新規開業した施設一覧」は次のクエリで取得できる。
 
 ```sql
 SELECT mf.*
 FROM medical_facility_events e
 JOIN medical_facilities mf ON mf.id = e.medical_facility_id
 WHERE e.event_type = 1 -- Created
-  AND e.department_code IS NULL
   AND e.occurred_on BETWEEN '2026-01-01' AND '2026-01-31'
 ```
 
-**重複イベントの冪等性について**: `department_code`がnullableなため、DB側のUNIQUE制約では施設単位イベント（`department_code IS NULL`）の重複を防げない（MySQLはUNIQUE制約内で複数のNULLを別物として扱う）。同じ変化を二重にイベント登録しないようにする重複排除は、将来のインポートロジック側の責務とする（今回はスキーマのみ）。
+診療科目単位のイベント（旧`department_code`カラム）は、診療科目が独立したレコードではなく施設に紐づく大分類タグの配列になったことに伴い廃止した。診療科目の変化は`department_categories`カラムの差分として、施設単位の`Updated`イベントのpayloadに含まれる。
 
-## `mhlw_dataset_downloads`
+## `rhb_dataset_downloads`
 
-MHLWオープンデータのダウンロード履歴を記録する追記専用のログテーブル。`app/Console/Commands/DownloadMhlwDatasets.php`（`mhlw:download`）が、ファイル名に埋め込まれた日付を前回記録分と比較し、新しいバージョンが見つかった時だけ行を追加する。
+地方厚生局データのダウンロード履歴を記録する追記専用のログテーブル。`app/Console/Commands/DownloadRhbDatasets.php`（`rhb:download`）が、局ごとのページに掲載された日付付きリンクを前回記録分と比較し、新しいバージョンが見つかった時だけ行を追加する。
 
 | カラム | 型 | NULL | 説明 |
 |---|---|---|---|
 | `id` | bigint (PK) | - | 内部主キー |
-| `dataset_key` | string | - | データセットの識別子（例: `hospital_facility`）。`config/mhlw.php`のキーと一致 |
-| `filename` | string | - | ダウンロードしたファイル名（例: `01-1_hospital_facility_info_20260601.csv.zip`） |
-| `published_on` | date | - | ファイル名から抽出した公開日 |
+| `bureau_code` | unsignedTinyInteger | - | `App\Enums\RhbBureau` をcast |
+| `category` | unsignedTinyInteger | - | `App\Enums\RhbCategory` をcast。1:医科 2:歯科 3:薬局 |
+| `prefecture_codes` | json | - | このダウンロード1件が束ねる都道府県コードの一覧（例: 北海道は`["01"]`のみ、東北の1ファイルは6県分を束ねるため6件）。局によってはZIP圧縮された複数ファイル・複数シート1ファイルを1回のダウンロードとして扱うため、県単位でファイルが分かれるとは限らない |
+| `filename` | string | - | ダウンロードしたファイル名 |
 | `source_url` | string | - | ダウンロード元URL |
-| `local_path` | string | - | `Storage::disk('local')`上の保存パス（`storage/app/private/mhlw/...`、Git管理外） |
+| `local_path` | string | - | `Storage::disk('local')`上の保存パス（Git管理外） |
+| `published_on` | date | - | ページに記載された公開日 |
 | `downloaded_at` | datetime | - | 実際にダウンロードした日時 |
 | `created_at` / `updated_at` | datetime | - | |
 
-`unique(['dataset_key', 'filename'])`により、同一バージョンの重複ダウンロード・重複行を防ぐ。
+`unique(bureau_code, category, filename)`により、同一バージョンの重複ダウンロード・重複行を防ぐ。「展開後の県×カテゴリ×ファイル」単位の状態は別テーブルに持たず、インポート実行のたびに`BundleExpander`で決定論的に再導出する（状態がドリフトする余地を増やさないため）。
 
 ## `kanji_variants`
 
-漢字の異体字（例: 髙⇄高）を検索用に統合するためのマスタテーブル。`name_normalized`/`short_name_normalized`の計算に使う。
+漢字の異体字（例: 髙⇄高）を検索用に統合するためのマスタテーブル。`name_normalized`の計算に使う。データソースの変更とは無関係に維持している基盤テーブル。
 
 | カラム | 型 | NULL | 説明 |
 |---|---|---|---|
@@ -184,15 +114,19 @@ MHLWオープンデータのダウンロード履歴を記録する追記専用�
 1. `Normalizer::normalize($value, Normalizer::FORM_KC)`（PHPの`intl`拡張）でNFKC正規化（全角英数字・全角スペース等を半角に統一）
 2. `kanji_variants`のマッピングで異体字を標準字体に置換（`strtr()`、`once()`でインスタンス単位にメモ化）
 
-`MedicalFacility`保存時（`saving`イベント）に`MedicalFacilityObserver`が`name`/`short_name`の変更を検知して自動的に`name_normalized`/`short_name_normalized`を計算する。`DatabaseSeeder`は`WithoutModelEvents`を使用しているため、将来`MedicalFacility`を一括生成するインポート処理で同様の設定を使う場合は、正規化カラムが自動計算されない点に注意（明示的に`ItaijiNormalizer`を呼び出す必要がある）。
+`MedicalFacility`保存時（`saving`イベント）に`MedicalFacilityObserver`が`name`の変更を検知して自動的に`name_normalized`を計算する。`DatabaseSeeder`は`WithoutModelEvents`を使用しているため、将来`MedicalFacility`を一括生成するインポート処理で同様の設定を使う場合は、正規化カラムが自動計算されない点に注意（明示的に`ItaijiNormalizer`を呼び出す必要がある）。
 
 異体字変換を別APIとして切り出すことも検討したが、現時点では利用者がこのアプリ1つのみでありYAGNIと判断し、アプリ内に閉じて実装した。
 
 ## 設計上の注意点
 
-- このデータセットには電話番号・郵便番号のカラムが存在しない（MHLWオープンデータの仕様上未提供）。
-- 開設者・運営法人（医療法人など）の情報もこのデータセットには含まれておらず、今回はスコープ外とした。必要になった場合は`medical_organizations`テーブルを新設し`medical_facilities`にnullable FKを追加する形を想定。
-- 都道府県コード・市区町村コードはあえて正規化せず、コード文字列のまま保持する方針とした。
-- 休診日スケジュール・診療/営業時間は、元データでは「1曜日/1パターン=1カラム」で数十〜100カラム超に及ぶが、本設計ではJSONカラムに正規化して保持している。
-- 実CSVインポート機能は複数フェーズに分けて実装し、フェーズ1〜4すべて完了した。フェーズ1（スキーマ修正・廃業検知用監視カラムの追加）・フェーズ2（CSV→構造化データのパース層、`app/Services/Mhlw/Import/`配下）・フェーズ3（差分検出・upsert層、`app/Services/Mhlw/Sync/`配下）・フェーズ4（Job・Queue・`mhlw:import`コマンド）。フェーズ4では`config/mhlw.php`の各データセットに`institution_type`/`role`メタデータを追加し、`ImportFacilityDatasetJob`/`ImportSpecialityDatasetJob`（`app/Jobs/`）を`Bus::batch()`でまとめて非同期キューへdispatchする。同一施設種別内では施設データセット→診療科目データセットの順で処理されるようチェーン化しており（`DepartmentClosureReconciler`が施設側の廃業判定コミット後の実行を要求するため）、`mhlw:import`コマンドは実行してキュー投入するのみで、実際の処理は別途起動しているワーカー（`queue:work`または`composer run dev`）が行う。定期クロール・REST API・認証は別フェーズで対応する。
-- 「10年スパンの運用に耐えるか」という観点で見直しを行い、全テーブルの`created_at`/`updated_at`等を当初のMySQL `TIMESTAMP`型（2038年1月19日で範囲外になる32bit Unix時間）から`DATETIME`型（西暦9999年まで対応）に変更した。`occurred_on`/`published_on`は元々`date`型のため対象外。合わせて`medical_facility_departments`に`(medical_facility_id, department_code)`の一意制約を追加し、将来の再インポートで重複行が蓄積しないようにした。
+- 地方厚生局データには開設者・管理者の氏名や指定年月日は含まれるが、法人番号のような構造化された運営法人IDは含まれない。`founder_name`は原本の表記（法人名＋代表者名が1文字列に混在することがある）をそのまま保持している。
+- 都道府県コードはあえて正規化せず、コード文字列のまま保持する方針を継続している。
+- 診療科目は時間帯付きの構造化データを持たない（旧`医療機能情報提供制度`データにあった診療時間・受付時間の情報は、地方厚生局データには存在しない）。
+- `latitude`/`longitude`はこのデータソースからは常にnullになる（座標情報自体が原本に存在しない）。将来ジオコーディングを行う場合のためカラムは残している。
+
+## データソースの変遷
+
+1. **旧: 医療機能情報提供制度CSV（フェーズ1〜4、PR #6〜#10、全て破棄済み）** — 厚生労働省が全国一本で公開するCSVを情報源としていた。診療科目の時間帯情報を含む豊富なデータだったが、電話番号・郵便番号・開設者情報が一切なく、実際の指定コードとしての信頼性も低い（内部発番のオープンデータ用IDで、公式な構造説明が存在しないことをMHLW公式の定義書で確認した）ことが判明し、破棄した。
+2. **現行: 地方厚生局の保険医療機関指定一覧（フェーズA以降）** — 8つの地方厚生局がそれぞれ独立して公開する「コード内容別医療機関一覧表」を情報源とする。全国一本のCSVではなく、局ごとに異なるURL構造・ファイル形式（PDF/Excel、ZIP圧縮あり）・レイアウト差異（列ヘッダーなしの印刷帳票形式、1レコードが3〜14行の可変長物理行に渡る）を持つため、`app/Services/Rhb/Download/`配下に局ごとの`BureauLinkResolver`/`BundleExpander`実装を追加していく設計にしている。フェーズA（本フェーズ）は北海道1局のみを対象にアーキテクチャを検証するパイロットで、`app/Services/Rhb/Import/`（DB非依存パース層）・`app/Services/Rhb/Sync/`（差分検出・upsert層、`App\Services\Sync\AttributeDiff`を共通利用）・`app/Jobs/ImportRhbFacilityListJob.php`・`rhb:download`/`rhb:import`コマンドで構成される。フェーズB以降で残り7局のダウンロード層を追加していくが、パース層・Sync層は変更不要になるよう設計している。定期クロール・REST API・認証は引き続き別フェーズで対応する。
+3. **「10年スパンの運用に耐えるか」という観点**は継続して重視しており、全テーブルの`created_at`/`updated_at`等はMySQL `DATETIME`型（西暦9999年まで対応、32bit Unix時間に依存する`TIMESTAMP`型の2038年問題を回避）で最初から作成している。

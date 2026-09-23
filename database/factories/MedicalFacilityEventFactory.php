@@ -23,7 +23,6 @@ class MedicalFacilityEventFactory extends Factory
 
         return [
             'medical_facility_id' => MedicalFacility::factory(),
-            'department_code' => null,
             'event_type' => $eventType,
             'occurred_on' => fake()->dateTimeBetween('-1 year', 'now'),
             'payload' => match ($eventType) {
@@ -33,7 +32,7 @@ class MedicalFacilityEventFactory extends Factory
                     'name' => ['old' => fake()->company(), 'new' => fake()->company()],
                 ],
             },
-            'mhlw_dataset_download_id' => null,
+            'rhb_dataset_download_id' => null,
         ];
     }
 }
