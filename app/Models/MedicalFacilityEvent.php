@@ -11,11 +11,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'medical_facility_id',
-    'department_code',
     'event_type',
     'occurred_on',
     'payload',
-    'mhlw_dataset_download_id',
+    'rhb_dataset_download_id',
 ])]
 class MedicalFacilityEvent extends Model
 {
@@ -31,11 +30,11 @@ class MedicalFacilityEvent extends Model
     }
 
     /**
-     * @return BelongsTo<MhlwDatasetDownload, $this>
+     * @return BelongsTo<RhbDatasetDownload, $this>
      */
-    public function mhlwDatasetDownload(): BelongsTo
+    public function rhbDatasetDownload(): BelongsTo
     {
-        return $this->belongsTo(MhlwDatasetDownload::class);
+        return $this->belongsTo(RhbDatasetDownload::class);
     }
 
     /**

@@ -2,55 +2,42 @@
 
 namespace App\Models;
 
+use App\Enums\DepartmentBaseCategory;
 use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityStatus;
+use App\Enums\RhbBureau;
 use Database\Factories\MedicalFacilityFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
-    'source_id',
+    'facility_code',
+    'bureau_code',
     'institution_type',
     'status',
-    'last_seen_mhlw_dataset_download_id',
+    'last_seen_rhb_dataset_download_id',
     'name',
-    'name_kana',
-    'short_name',
-    'short_name_kana',
-    'name_en',
     'prefecture_code',
-    'city_code',
+    'postal_code',
     'address',
     'latitude',
     'longitude',
-    'website_url',
-    'closure_schedule',
-    'business_hours',
-    'reception_hours',
-    'general_beds',
-    'sanatorium_beds',
-    'sanatorium_beds_medical_insurance',
-    'sanatorium_beds_care_insurance',
-    'psychiatric_beds',
-    'tuberculosis_beds',
-    'infectious_disease_beds',
-    'total_beds',
+    'phone_number',
+    'founder_name',
+    'administrator_name',
+    'designated_on',
+    'designation_history',
+    'bed_counts',
+    'department_categories',
 ])]
 class MedicalFacility extends Model
 {
     /** @use HasFactory<MedicalFacilityFactory> */
     use HasFactory;
-
-    /**
-     * @return HasMany<MedicalFacilityDepartment, $this>
-     */
-    public function departments(): HasMany
-    {
-        return $this->hasMany(MedicalFacilityDepartment::class);
-    }
 
     /**
      * @return HasMany<MedicalFacilityEvent, $this>
@@ -61,11 +48,11 @@ class MedicalFacility extends Model
     }
 
     /**
-     * @return BelongsTo<MhlwDatasetDownload, $this>
+     * @return BelongsTo<RhbDatasetDownload, $this>
      */
-    public function lastSeenMhlwDatasetDownload(): BelongsTo
+    public function lastSeenRhbDatasetDownload(): BelongsTo
     {
-        return $this->belongsTo(MhlwDatasetDownload::class, 'last_seen_mhlw_dataset_download_id');
+        return $this->belongsTo(RhbDatasetDownload::class, 'last_seen_rhb_dataset_download_id');
     }
 
     /**
@@ -76,13 +63,15 @@ class MedicalFacility extends Model
     protected function casts(): array
     {
         return [
+            'bureau_code' => RhbBureau::class,
             'institution_type' => InstitutionType::class,
             'status' => MedicalFacilityStatus::class,
             'latitude' => 'decimal:6',
             'longitude' => 'decimal:6',
-            'closure_schedule' => 'array',
-            'business_hours' => 'array',
-            'reception_hours' => 'array',
+            'designated_on' => 'date',
+            'designation_history' => 'array',
+            'bed_counts' => 'array',
+            'department_categories' => AsEnumCollection::class.':'.DepartmentBaseCategory::class,
         ];
     }
 }
