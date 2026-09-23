@@ -16,4 +16,14 @@ enum RhbBureau: int
     case ChugokuShikoku = 6;
     case Shikoku = 7;
     case Kyushu = 8;
+
+    /**
+     * Reads the Japanese display name from config/rhb.php rather than
+     * duplicating it here, since that file is already the source of truth
+     * for each bureau's label (and its source URL, used for API attribution).
+     */
+    public function label(): string
+    {
+        return collect(config('rhb.bureaus'))->firstWhere('bureau', $this)['label'];
+    }
 }
