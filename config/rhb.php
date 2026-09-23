@@ -1,6 +1,8 @@
 <?php
 
 use App\Enums\RhbBureau;
+use App\Services\Rhb\Download\ChugokuShikokuBundleExpander;
+use App\Services\Rhb\Download\ChugokuShikokuLinkResolver;
 use App\Services\Rhb\Download\HokkaidoLinkResolver;
 use App\Services\Rhb\Download\KantoShinetsuBundleExpander;
 use App\Services\Rhb\Download\KantoShinetsuLinkResolver;
@@ -73,6 +75,15 @@ return [
             'prefecture_codes' => ['18', '25', '26', '27', '28', '29', '30'],
             'resolver' => KinkiLinkResolver::class,
             'expander' => KinkiBundleExpander::class,
+        ],
+        'chugokushikoku' => [
+            'label' => '中国四国厚生局',
+            'bureau' => RhbBureau::ChugokuShikoku,
+            'index_url' => 'https://kouseikyoku.mhlw.go.jp/chugokushikoku/chousaka/iryoukikanshitei.html',
+            'base_url' => 'https://kouseikyoku.mhlw.go.jp',
+            'prefecture_codes' => ['31', '32', '33', '34', '35'],
+            'resolver' => ChugokuShikokuLinkResolver::class,
+            'expander' => ChugokuShikokuBundleExpander::class,
         ],
     ],
 
