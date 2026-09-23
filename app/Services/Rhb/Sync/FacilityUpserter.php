@@ -15,7 +15,15 @@ use Illuminate\Support\Facades\DB;
  * InsuredFacilityRecordMapper output array, and records the corresponding
  * medical_facility_events entry. Does not perform closure detection
  * (FacilityClosureReconciler's job) -- this only ever touches the one row
- * identified by (bureau_code, facility_code).
+ * identified by (bureau_code, prefecture_code, institution_type, facility_code).
+ *
+ * facility_code is only unique within one (prefecture, institution_type)
+ * pair, not across a whole bureau -- real Kanto-Shinetsu data confirmed
+ * unrelated facilities colliding on the same 7-digit code both across
+ * prefectures and, within one prefecture, across institution types (e.g. a
+ * medical clinic and an unrelated dental clinic sharing a code), so both
+ * must be part of the lookup or distinct facilities silently collapse into
+ * one row.
  */
 final class FacilityUpserter
 {
@@ -26,6 +34,8 @@ final class FacilityUpserter
     public function upsert(array $mappedAttributes, RhbDatasetDownload $download): array
     {
         $facility = MedicalFacility::where('bureau_code', $mappedAttributes['bureau_code'])
+            ->where('prefecture_code', $mappedAttributes['prefecture_code'])
+            ->where('institution_type', $mappedAttributes['institution_type'])
             ->where('facility_code', $mappedAttributes['facility_code'])
             ->first();
 

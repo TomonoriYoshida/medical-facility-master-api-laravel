@@ -160,9 +160,12 @@ class DownloadRhbDatasets extends Command
 
     private function fetch(string $url): Response
     {
+        // 120s, not 30s: real Kanto-Shinetsu ZIPs run 4.7-7.4MB and the
+        // source server was observed transferring at ~117KB/s, so a 30s
+        // window cut off mid-download every time regardless of retries.
         return Http::withHeaders(['User-Agent' => self::USER_AGENT])
             ->connectTimeout(10)
-            ->timeout(30)
+            ->timeout(120)
             ->retry(3, 1000, fn (Throwable $exception): bool => $exception instanceof ConnectionException)
             ->get($url);
     }

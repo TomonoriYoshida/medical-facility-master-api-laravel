@@ -39,6 +39,12 @@ class ImportRhbFacilityListJob implements ShouldQueue
 
     public int $backoff = 15;
 
+    // Real Kanto-Shinetsu Medical data (36,451 rows across 10 prefecture
+    // files, all upserted within one job run) measured at ~227 rows/sec,
+    // needing ~160s -- well past the worker's default 60s kill. 600s
+    // leaves headroom for larger bureaus still to come (e.g. Kinki).
+    public int $timeout = 600;
+
     public function __construct(
         public readonly RhbBureau $bureau,
         public readonly RhbCategory $category,

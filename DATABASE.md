@@ -24,7 +24,7 @@ medical_facilities (1) ──< (多) medical_facility_events
 |---|---|---|---|
 | `id` | bigint (PK) | - | 内部主キー |
 | `facility_code` | string(7) | - | 地方厚生局発行の医療機関コード。区切り文字（カンマ/ハイフン等、局によって表記が異なる）を除去した数字7桁に正規化して保持。再インポート時のupsertキーの一部 |
-| `bureau_code` | unsignedTinyInteger | - | `App\Enums\RhbBureau` をcast。どの地方厚生局が発行したコードかを表す。`facility_code`は局をまたいで一意である保証が未検証のため、`(bureau_code, facility_code)`の複合キーで一意性を担保している |
+| `bureau_code` | unsignedTinyInteger | - | `App\Enums\RhbBureau` をcast。どの地方厚生局が発行したコードかを表す。`facility_code`は`(都道府県, institution_type)`の組ごとにしか一意性が保証されない（実データ検証済み：関東信越厚生局の実データで、無関係な施設が異なる県で同一の7桁コードを持つ実例、および同一県内でも医科施設と歯科施設が同一コードを持つ実例の両方を確認）ため、`(bureau_code, prefecture_code, institution_type, facility_code)`の複合キーで一意性を担保している |
 | `institution_type` | unsignedTinyInteger | - | `App\Enums\InstitutionType` をcast。1:病院 2:診療所 3:歯科診療所 4:薬局 |
 | `status` | unsignedTinyInteger | - | `App\Enums\MedicalFacilityStatus` をcast。1:Active 2:Closed 3:Suspended（休止）。デフォルト1。実データで休止は0.72%出現する実在のステータスで、廃業（Closed）とは意味が異なる（施設情報・診療科目は保持されたまま指定効力のみ停止している状態） |
 | `last_seen_rhb_dataset_download_id` | FK → `rhb_dataset_downloads`, nullable | ✓ | `nullOnDelete()`。廃業検知用の監視カラム。インポート処理が施設を作成・更新・再活性化するたびに、その回の`rhb_dataset_downloads.id`を記録する |
@@ -44,7 +44,7 @@ medical_facilities (1) ──< (多) medical_facility_events
 | `department_categories` | json, nullable | ✓ | `App\Enums\DepartmentBaseCategory`値の配列（`AsEnumCollection`キャスト）。医科・歯科のみ、薬局は常に空配列。原本の診療科目欄は「基本診療科名＋自由な修飾語」の組み合わせ命名が医療法施行規則で公式に許容されており事実上自由記述に近いため、修飾語を含む完全一致ではなく「大分類（内科系・外科系など）のどれに該当するか」というマーカーマッチによる粗い分類に留めている（実データ検証で出現件数の96.3%を分類可能と確認済み。完全一致の復元は制度上原理的に不可能） |
 | `created_at` / `updated_at` | datetime | - | |
 
-インデックス: `institution_type`、`status`、`prefecture_code`、`name_normalized`。`unique(bureau_code, facility_code)`。複合インデックス`medical_facilities_reconcile_index`（`institution_type`, `prefecture_code`, `status`, `last_seen_rhb_dataset_download_id`）は廃業検知クエリ用——`prefecture_code`を含むのは、1件の`rhb_dataset_downloads`行が複数県をまとめて束ねる局（東北・関東信越等）が存在するため、廃業検知が誤って別県の施設まで対象にしないためのスコープ絞り込み。
+インデックス: `institution_type`、`status`、`prefecture_code`、`name_normalized`。`unique(bureau_code, prefecture_code, institution_type, facility_code)`。複合インデックス`medical_facilities_reconcile_index`（`institution_type`, `prefecture_code`, `status`, `last_seen_rhb_dataset_download_id`）は廃業検知クエリ用——`prefecture_code`を含むのは、1件の`rhb_dataset_downloads`行が複数県をまとめて束ねる局（東北・関東信越等）が存在するため、廃業検知が誤って別県の施設まで対象にしないためのスコープ絞り込み。
 
 ## `medical_facility_events`
 
