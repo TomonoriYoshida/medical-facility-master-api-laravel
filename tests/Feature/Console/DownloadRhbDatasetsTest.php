@@ -29,6 +29,8 @@ class DownloadRhbDatasetsTest extends TestCase
 
     private const string SHIKOKU_INDEX_URL = 'https://kouseikyoku.mhlw.go.jp/shikoku/gyomu/gyomu/hoken_kikan/shitei/index.html';
 
+    private const string KYUSHU_INDEX_URL = 'https://kouseikyoku.mhlw.go.jp/kyushu/gyomu/gyomu/hoken_kikan/index_00006.html';
+
     private const string ZIP_BODY = "PK\x03\x04fake-xlsx-content";
 
     private string $indexHtml = '';
@@ -67,6 +69,10 @@ class DownloadRhbDatasetsTest extends TestCase
 
             if ($request->url() === self::SHIKOKU_INDEX_URL) {
                 return Http::response($this->fixture('rhb-shikoku-index.html'));
+            }
+
+            if ($request->url() === self::KYUSHU_INDEX_URL) {
+                return Http::response($this->fixture('rhb-kyushu-index.html'));
             }
 
             if (in_array($request->url(), $this->failingUrls, true)) {
@@ -159,6 +165,7 @@ class DownloadRhbDatasetsTest extends TestCase
         $this->assertContains(RhbBureau::Kinki, $bureausSeen);
         $this->assertContains(RhbBureau::ChugokuShikoku, $bureausSeen);
         $this->assertContains(RhbBureau::Shikoku, $bureausSeen);
+        $this->assertContains(RhbBureau::Kyushu, $bureausSeen);
     }
 
     public function test_an_unknown_bureau_key_is_rejected(): void
