@@ -3,6 +3,8 @@
 namespace Tests\Unit\Services\Sync;
 
 use App\Services\Sync\AttributeDiff;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 use PHPUnit\Framework\TestCase;
 
 class AttributeDiffTest extends TestCase
@@ -128,6 +130,58 @@ class AttributeDiffTest extends TestCase
 
         $this->assertSame(
             ['name' => ['old' => null, 'new' => '新規施設']],
+            AttributeDiff::diff($current, $mapped),
+        );
+    }
+
+    public function test_a_date_cast_carbon_instance_and_a_mapper_date_string_are_treated_as_equal(): void
+    {
+        // Regression test: a `date`-cast column is returned by Laravel as
+        // a Carbon instance, never `===`-equal (nor is_scalar-comparable)
+        // to a mapper's plain "Y-m-d" string -- every facility with such a
+        // column would otherwise be flagged as "changed" on every reimport.
+        $current = ['designated_on' => CarbonImmutable::parse('2023-10-23')];
+        $mapped = ['designated_on' => '2023-10-23'];
+
+        $this->assertSame([], AttributeDiff::diff($current, $mapped));
+    }
+
+    public function test_a_genuine_date_change_is_still_detected(): void
+    {
+        $current = ['designated_on' => CarbonImmutable::parse('2023-10-23')];
+        $mapped = ['designated_on' => '2023-10-24'];
+
+        // assertEquals, not assertSame: two separately-constructed Carbon
+        // instances are never === to each other even for the same date.
+        $this->assertEquals(
+            ['designated_on' => ['old' => CarbonImmutable::parse('2023-10-23'), 'new' => '2023-10-24']],
+            AttributeDiff::diff($current, $mapped),
+        );
+    }
+
+    public function test_an_enum_collection_cast_and_a_mapper_plain_array_of_the_same_enums_are_treated_as_equal(): void
+    {
+        // Regression test: an AsEnumCollection-cast column is returned by
+        // Laravel as an Illuminate\Support\Collection, which is neither
+        // `===`-equal to nor even is_array()-true against a mapper's plain
+        // array of the same enum instances.
+        $current = ['department_categories' => new Collection(['internal_medicine', 'surgery'])];
+        $mapped = ['department_categories' => ['internal_medicine', 'surgery']];
+
+        $this->assertSame([], AttributeDiff::diff($current, $mapped));
+    }
+
+    public function test_a_genuine_collection_content_change_is_still_detected(): void
+    {
+        $current = ['department_categories' => new Collection(['internal_medicine'])];
+        $mapped = ['department_categories' => ['surgery']];
+
+        // assertEquals, not assertSame: the returned "old" value is the
+        // original Collection instance from $current, and two separate
+        // Collection instances are never === to each other even with
+        // identical content.
+        $this->assertEquals(
+            ['department_categories' => ['old' => new Collection(['internal_medicine']), 'new' => ['surgery']]],
             AttributeDiff::diff($current, $mapped),
         );
     }

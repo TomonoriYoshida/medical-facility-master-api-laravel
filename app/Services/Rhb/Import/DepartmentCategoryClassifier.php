@@ -128,6 +128,14 @@ final class DepartmentCategoryClassifier
             }
         }
 
+        // Sorted by category value (not source token order) so the same
+        // set of departments always maps to the same list regardless of
+        // how the source happened to order its tokens this run -- an
+        // unordered list would otherwise risk a false-positive Updated
+        // event on every reimport whenever the source's own ordering
+        // shifts without the actual set of departments changing.
+        ksort($categories);
+
         return array_values($categories);
     }
 }
