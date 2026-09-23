@@ -134,6 +134,57 @@ class FacilityUpserterTest extends TestCase
         $this->assertSame(FacilityUpsertOutcome::Unchanged, $result['outcome']);
     }
 
+    public function test_the_same_facility_code_in_different_prefectures_creates_two_separate_facilities(): void
+    {
+        // Regression test: real Kanto-Shinetsu data confirmed facility_code
+        // is only unique within one prefecture, not across a whole bureau
+        // (e.g. code "0110056" is both an unrelated Ibaraki hospital and a
+        // Kanagawa clinic) -- without prefecture_code in the lookup, the
+        // second upsert would silently overwrite the first as an "Updated"
+        // on the same row instead of creating a distinct facility.
+        $download = RhbDatasetDownload::factory()->create();
+        $ibaraki = $this->mappedAttributes(['facility_code' => '0110056', 'prefecture_code' => '08', 'name' => '水戸赤十字病院']);
+        $kanagawa = $this->mappedAttributes(['facility_code' => '0110056', 'prefecture_code' => '14', 'name' => '鶴見皮ふ科泌尿器科']);
+
+        $first = (new FacilityUpserter)->upsert($ibaraki, $download);
+        $second = (new FacilityUpserter)->upsert($kanagawa, $download);
+
+        $this->assertSame(FacilityUpsertOutcome::Created, $first['outcome']);
+        $this->assertSame(FacilityUpsertOutcome::Created, $second['outcome']);
+        $this->assertNotSame($first['facility']->id, $second['facility']->id);
+        $this->assertSame('水戸赤十字病院', $first['facility']->fresh()->name);
+        $this->assertSame('鶴見皮ふ科泌尿器科', $second['facility']->fresh()->name);
+    }
+
+    public function test_the_same_facility_code_in_the_same_prefecture_but_different_institution_types_creates_two_separate_facilities(): void
+    {
+        // Regression test: real Kanto-Shinetsu data confirmed facility_code
+        // is only unique within one (prefecture, institution_type) pair --
+        // a real Saitama medical clinic and an unrelated Saitama dental
+        // clinic shared the same 7-digit code (verified against the real
+        // Medical/Dental source files) -- without institution_type in the
+        // lookup, importing Dental after Medical silently overwrote the
+        // medical clinic's row instead of creating a distinct facility.
+        $download = RhbDatasetDownload::factory()->create();
+        $medical = $this->mappedAttributes([
+            'facility_code' => '0303164', 'prefecture_code' => '11',
+            'institution_type' => InstitutionType::Clinic, 'name' => '大原医院',
+        ]);
+        $dental = $this->mappedAttributes([
+            'facility_code' => '0303164', 'prefecture_code' => '11',
+            'institution_type' => InstitutionType::DentalClinic, 'name' => '岡野歯科医院',
+        ]);
+
+        $first = (new FacilityUpserter)->upsert($medical, $download);
+        $second = (new FacilityUpserter)->upsert($dental, $download);
+
+        $this->assertSame(FacilityUpsertOutcome::Created, $first['outcome']);
+        $this->assertSame(FacilityUpsertOutcome::Created, $second['outcome']);
+        $this->assertNotSame($first['facility']->id, $second['facility']->id);
+        $this->assertSame('大原医院', $first['facility']->fresh()->name);
+        $this->assertSame('岡野歯科医院', $second['facility']->fresh()->name);
+    }
+
     public function test_designated_on_alone_does_not_trigger_a_false_updated_event(): void
     {
         // Regression test at the Feature level (real `date`-cast Carbon

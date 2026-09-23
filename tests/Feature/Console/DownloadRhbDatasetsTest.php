@@ -19,6 +19,8 @@ class DownloadRhbDatasetsTest extends TestCase
 
     private const string TOHOKU_INDEX_URL = 'https://kouseikyoku.mhlw.go.jp/tohoku/gyomu/gyomu/hoken_kikan/itiran.html';
 
+    private const string KANTOSHINETSU_INDEX_URL = 'https://kouseikyoku.mhlw.go.jp/kantoshinetsu/chousa/shitei.html';
+
     private const string ZIP_BODY = "PK\x03\x04fake-xlsx-content";
 
     private string $indexHtml = '';
@@ -37,6 +39,10 @@ class DownloadRhbDatasetsTest extends TestCase
 
             if ($request->url() === self::TOHOKU_INDEX_URL) {
                 return Http::response($this->fixture('rhb-tohoku-index.html'));
+            }
+
+            if ($request->url() === self::KANTOSHINETSU_INDEX_URL) {
+                return Http::response($this->fixture('rhb-kantoshinetsu-index.html'));
             }
 
             if (in_array($request->url(), $this->failingUrls, true)) {
@@ -124,6 +130,7 @@ class DownloadRhbDatasetsTest extends TestCase
         $bureausSeen = RhbDatasetDownload::query()->distinct()->pluck('bureau_code');
         $this->assertContains(RhbBureau::Hokkaido, $bureausSeen);
         $this->assertContains(RhbBureau::Tohoku, $bureausSeen);
+        $this->assertContains(RhbBureau::KantoShinetsu, $bureausSeen);
     }
 
     public function test_an_unknown_bureau_key_is_rejected(): void

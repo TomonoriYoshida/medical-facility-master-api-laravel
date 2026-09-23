@@ -2,6 +2,8 @@
 
 use App\Enums\RhbBureau;
 use App\Services\Rhb\Download\HokkaidoLinkResolver;
+use App\Services\Rhb\Download\KantoShinetsuBundleExpander;
+use App\Services\Rhb\Download\KantoShinetsuLinkResolver;
 use App\Services\Rhb\Download\MultiSheetBundleExpander;
 use App\Services\Rhb\Download\SingleFileBundleExpander;
 use App\Services\Rhb\Download\TohokuLinkResolver;
@@ -41,6 +43,15 @@ return [
             'prefecture_codes' => ['02', '03', '04', '05', '06', '07'],
             'resolver' => TohokuLinkResolver::class,
             'expander' => MultiSheetBundleExpander::class,
+        ],
+        'kantoshinetsu' => [
+            'label' => '関東信越厚生局',
+            'bureau' => RhbBureau::KantoShinetsu,
+            'index_url' => 'https://kouseikyoku.mhlw.go.jp/kantoshinetsu/chousa/shitei.html',
+            'base_url' => 'https://kouseikyoku.mhlw.go.jp',
+            'prefecture_codes' => ['08', '09', '10', '11', '12', '13', '14', '15', '19', '20'],
+            'resolver' => KantoShinetsuLinkResolver::class,
+            'expander' => KantoShinetsuBundleExpander::class,
         ],
     ],
 

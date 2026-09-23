@@ -135,6 +135,27 @@ trait BuildsXlsxFixture
         return $path;
     }
 
+    /**
+     * @param  array<string, list<list<string>>>  $entries  zip entry filename => 0-indexed rows of 0-indexed column values
+     */
+    private function createZipOfXlsxFiles(array $entries): string
+    {
+        $zipPath = tempnam(sys_get_temp_dir(), 'rhb_xlsx_zip_test_').'.zip';
+
+        $zip = new ZipArchive;
+        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+
+        foreach ($entries as $entryName => $rows) {
+            $zip->addFile($this->createXlsx($rows), $entryName);
+        }
+
+        $zip->close();
+
+        $this->xlsxTempPaths[] = $zipPath;
+
+        return $zipPath;
+    }
+
     private function columnLetter(int $index): string
     {
         $letter = '';
