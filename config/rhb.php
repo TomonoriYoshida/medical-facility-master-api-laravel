@@ -7,6 +7,8 @@ use App\Services\Rhb\Download\KantoShinetsuLinkResolver;
 use App\Services\Rhb\Download\MultiSheetBundleExpander;
 use App\Services\Rhb\Download\SingleFileBundleExpander;
 use App\Services\Rhb\Download\TohokuLinkResolver;
+use App\Services\Rhb\Download\TokaiHokurikuBundleExpander;
+use App\Services\Rhb\Download\TokaiHokurikuLinkResolver;
 
 return [
 
@@ -18,8 +20,7 @@ return [
     | Each bureau publishes its own "コード内容別医療機関一覧表" page, with a
     | different URL structure and file-bundling shape -- there is no shared
     | index the way the old MHLW pipeline had, so each bureau gets its own
-    | resolver/expander implementation. Only Hokkaido is wired up so far
-    | (Phase A pilot); the remaining 7 bureaus are added in later phases by
+    | resolver/expander implementation. Bureaus are added incrementally by
     | adding an entry here plus a resolver/expander pair, without touching
     | the Import/Sync layers or the Job that drives them.
     |
@@ -52,6 +53,15 @@ return [
             'prefecture_codes' => ['08', '09', '10', '11', '12', '13', '14', '15', '19', '20'],
             'resolver' => KantoShinetsuLinkResolver::class,
             'expander' => KantoShinetsuBundleExpander::class,
+        ],
+        'tokaihokuriku' => [
+            'label' => '東海北陸厚生局',
+            'bureau' => RhbBureau::TokaiHokuriku,
+            'index_url' => 'https://kouseikyoku.mhlw.go.jp/tokaihokuriku/newpage_00287.html',
+            'base_url' => 'https://kouseikyoku.mhlw.go.jp',
+            'prefecture_codes' => ['16', '17', '21', '22', '23', '24'],
+            'resolver' => TokaiHokurikuLinkResolver::class,
+            'expander' => TokaiHokurikuBundleExpander::class,
         ],
     ],
 
