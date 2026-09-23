@@ -35,4 +35,23 @@ class MedicalFacilityTest extends TestCase
 
         $this->assertSame('書き換え済み', $facility->fresh()->name_normalized);
     }
+
+    public function test_saving_a_facility_populates_the_normalized_address_column(): void
+    {
+        $facility = MedicalFacility::factory()->create(['address' => '世田谷区池尻１５７ー１']);
+
+        $this->assertSame('世田谷区池尻157-1', $facility->address_normalized);
+    }
+
+    public function test_updating_an_unrelated_column_does_not_recompute_address_normalized(): void
+    {
+        $facility = MedicalFacility::factory()->create(['address' => '山田町１番地']);
+
+        $facility->address_normalized = '書き換え済み';
+        $facility->save();
+
+        $facility->update(['phone_number' => '011-000-0000']);
+
+        $this->assertSame('書き換え済み', $facility->fresh()->address_normalized);
+    }
 }
