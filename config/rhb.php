@@ -8,6 +8,8 @@ use App\Services\Rhb\Download\KantoShinetsuBundleExpander;
 use App\Services\Rhb\Download\KantoShinetsuLinkResolver;
 use App\Services\Rhb\Download\KinkiBundleExpander;
 use App\Services\Rhb\Download\KinkiLinkResolver;
+use App\Services\Rhb\Download\KyushuBundleExpander;
+use App\Services\Rhb\Download\KyushuLinkResolver;
 use App\Services\Rhb\Download\MultiSheetBundleExpander;
 use App\Services\Rhb\Download\ShikokuBundleExpander;
 use App\Services\Rhb\Download\ShikokuLinkResolver;
@@ -95,6 +97,15 @@ return [
             'prefecture_codes' => ['36', '37', '38', '39'],
             'resolver' => ShikokuLinkResolver::class,
             'expander' => ShikokuBundleExpander::class,
+        ],
+        'kyushu' => [
+            'label' => '九州厚生局',
+            'bureau' => RhbBureau::Kyushu,
+            'index_url' => 'https://kouseikyoku.mhlw.go.jp/kyushu/gyomu/gyomu/hoken_kikan/index_00006.html',
+            'base_url' => 'https://kouseikyoku.mhlw.go.jp',
+            'prefecture_codes' => ['40', '41', '42', '43', '44', '45', '46', '47'],
+            'resolver' => KyushuLinkResolver::class,
+            'expander' => KyushuBundleExpander::class,
         ],
     ],
 
