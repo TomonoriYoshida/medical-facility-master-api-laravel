@@ -9,6 +9,8 @@ use App\Services\Rhb\Download\KantoShinetsuLinkResolver;
 use App\Services\Rhb\Download\KinkiBundleExpander;
 use App\Services\Rhb\Download\KinkiLinkResolver;
 use App\Services\Rhb\Download\MultiSheetBundleExpander;
+use App\Services\Rhb\Download\ShikokuBundleExpander;
+use App\Services\Rhb\Download\ShikokuLinkResolver;
 use App\Services\Rhb\Download\SingleFileBundleExpander;
 use App\Services\Rhb\Download\TohokuLinkResolver;
 use App\Services\Rhb\Download\TokaiHokurikuBundleExpander;
@@ -84,6 +86,15 @@ return [
             'prefecture_codes' => ['31', '32', '33', '34', '35'],
             'resolver' => ChugokuShikokuLinkResolver::class,
             'expander' => ChugokuShikokuBundleExpander::class,
+        ],
+        'shikoku' => [
+            'label' => '四国厚生局',
+            'bureau' => RhbBureau::Shikoku,
+            'index_url' => 'https://kouseikyoku.mhlw.go.jp/shikoku/gyomu/gyomu/hoken_kikan/shitei/index.html',
+            'base_url' => 'https://kouseikyoku.mhlw.go.jp',
+            'prefecture_codes' => ['36', '37', '38', '39'],
+            'resolver' => ShikokuLinkResolver::class,
+            'expander' => ShikokuBundleExpander::class,
         ],
     ],
 
