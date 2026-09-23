@@ -33,6 +33,7 @@ medical_facilities (1) ──< (多) medical_facility_events
 | `prefecture_code` | string(2) | - | 都道府県コード |
 | `postal_code` | string(8) | ✓ | 郵便番号（`〒NNN－NNNN`形式の原本から抽出） |
 | `address` | string | - | 所在地 |
+| `address_normalized` | string | ✓ | `address`を`App\Services\Text\AddressNormalizer`で正規化した検索用カラム。`MedicalFacilityObserver`が保存時に自動計算するため`#[Fillable]`には含まれない |
 | `latitude` | decimal(10,6) | ✓ | 所在地座標（緯度）。地方厚生局データには含まれないため、この経路からのインポートでは常にnull。将来のジオコーディング機能に備えてカラムのみ温存 |
 | `longitude` | decimal(10,6) | ✓ | 所在地座標（経度）。同上 |
 | `phone_number` | string | ✓ | 電話番号。区切り文字を`0X-XXXX-XXXX`形式のハイフンに正規化して保持（括弧区切り・連続ハイフンのタイプミスのみ補正、桁の欠落など元データから正しい形を機械的に復元できないものはそのまま保持） |
@@ -117,6 +118,10 @@ WHERE e.event_type = 1 -- Created
 `MedicalFacility`保存時（`saving`イベント）に`MedicalFacilityObserver`が`name`の変更を検知して自動的に`name_normalized`を計算する。`DatabaseSeeder`は`WithoutModelEvents`を使用しているため、将来`MedicalFacility`を一括生成するインポート処理で同様の設定を使う場合は、正規化カラムが自動計算されない点に注意（明示的に`ItaijiNormalizer`を呼び出す必要がある）。
 
 異体字変換を別APIとして切り出すことも検討したが、現時点では利用者がこのアプリ1つのみでありYAGNIと判断し、アプリ内に閉じて実装した。
+
+### 住所正規化ロジック（`App\Services\Text\AddressNormalizer`）
+
+`ItaijiNormalizer`を合成し（NFKCで全角数字・全角ハイフンを半角化）、その後に住所特有のルールを1点追加する: 実データで番地区切りにカタカナ長音記号「ー」が誤用されているケース（例: `丸塚町１５７ー１`）を、数字に前後を挟まれている場合のみハイフンへ変換する。`ガーデンハウス`のような建物名内の正当な長音記号はカナに前後を挟まれるため対象外——機械的に判別できるのはこの文脈のみと実データで確認済み。`name_normalized`と同じく`MedicalFacilityObserver`が`address`の変更を検知して自動計算する。
 
 ## 設計上の注意点
 
