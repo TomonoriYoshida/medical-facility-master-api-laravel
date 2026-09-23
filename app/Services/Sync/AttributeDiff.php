@@ -2,6 +2,9 @@
 
 namespace App\Services\Sync;
 
+use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
+
 /**
  * Compares an existing model's attributes against a freshly mapped
  * attribute array (from a data-source-specific row mapper) and reports
@@ -12,8 +15,13 @@ namespace App\Services\Sync;
  * decimal-cast columns are always returned by Laravel as a *string* (e.g.
  * "35.658581"), while a row mapper typically produces a PHP float for the
  * same column -- an unnormalized `===` would flag every row with such a
- * column as "changed" on every single reimport. JSON-valued columns are
- * also key-sorted before comparing so a mapper that builds an array in a
+ * column as "changed" on every single reimport. Likewise, a `date`-cast
+ * column comes back as a Carbon instance (never `===`-equal to a mapper's
+ * plain date string) and an `AsEnumCollection`-cast column comes back as
+ * an Illuminate\Support\Collection (never `===`-equal to, nor even
+ * `is_array()`-true against, a mapper's plain array) -- both are unwrapped
+ * to a plain comparable value first. JSON-valued columns are also
+ * key-sorted before comparing so a mapper that builds an array in a
  * different (but content-equal) key order can't silently trigger the same
  * kind of false-positive Updated event flood.
  */
@@ -41,6 +49,9 @@ final class AttributeDiff
 
     private static function areEqual(mixed $old, mixed $new): bool
     {
+        $old = self::unwrap($old);
+        $new = self::unwrap($new);
+
         if ($old === null || $new === null) {
             return $old === $new;
         }
@@ -54,6 +65,24 @@ final class AttributeDiff
         }
 
         return $old === $new;
+    }
+
+    /**
+     * Reduces Eloquent-cast objects to the plain value a mapper would
+     * naturally produce for the same column, so the rest of the
+     * comparison never has to special-case them.
+     */
+    private static function unwrap(mixed $value): mixed
+    {
+        if ($value instanceof Collection) {
+            return $value->all();
+        }
+
+        if ($value instanceof CarbonInterface) {
+            return $value->toDateString();
+        }
+
+        return $value;
     }
 
     /**
