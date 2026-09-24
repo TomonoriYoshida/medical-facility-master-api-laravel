@@ -68,8 +68,7 @@ class ImportRhbDatasets extends Command
             ->allowFailures()
             ->dispatch();
 
-        $this->components->info("インポートをキューに投入しました (batch ID: {$batch->id})。");
-        $this->components->warn('キューワーカーが起動していないと処理は進みません（`sail artisan queue:work` または `sail composer run dev`）。');
+        $this->components->info("インポートをキューに投入しました (batch ID: {$batch->id})。キューワーカー（`sail artisan queue:work` または `sail composer run dev`）が処理します。");
 
         if (! $this->option('wait')) {
             return Command::SUCCESS;

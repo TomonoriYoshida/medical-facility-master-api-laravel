@@ -42,11 +42,29 @@ final class ZipBundleReader
                 }
 
                 yield $entryName => function () use ($zip, $i, $entryName, $zipPath, $downloadId): string {
-                    $contents = $zip->getFromIndex($i);
+                    // From PHP 8.5.11 a corrupted body also raises an
+                    // E_WARNING, which Laravel's error handler would turn
+                    // into an ErrorException before the check below could
+                    // add the entry/download context -- so capture it here.
+                    $readWarning = null;
+                    set_error_handler(function (int $level, string $message) use (&$readWarning): bool {
+                        $readWarning = $message;
+
+                        return true;
+                    });
+
+                    try {
+                        $contents = $zip->getFromIndex($i);
+                    } finally {
+                        restore_error_handler();
+                    }
+
                     $declaredSize = $zip->statIndex($i)['size'] ?? null;
 
                     if ($contents === false || strlen($contents) !== $declaredSize) {
-                        throw new RuntimeException("Unable to read entry \"{$entryName}\" in zip \"{$zipPath}\" (download #{$downloadId}).");
+                        $detail = $readWarning === null ? '' : " {$readWarning}";
+
+                        throw new RuntimeException("Unable to read entry \"{$entryName}\" in zip \"{$zipPath}\" (download #{$downloadId}).{$detail}");
                     }
 
                     return $contents;
