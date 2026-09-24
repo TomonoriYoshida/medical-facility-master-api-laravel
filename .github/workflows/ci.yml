@@ -26,6 +26,30 @@ jobs:
 
       - run: vendor/bin/pint --test
 
+  static-analysis:
+    name: PHPStan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: intl, zip
+          coverage: none
+
+      - uses: ramsey/composer-install@v3
+
+      # Larastan boots the application to resolve Laravel's types, so it
+      # needs a .env with an APP_KEY (no database connection is required:
+      # model columns are read from database/schema/mysql-schema.sql).
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+
   tests:
     name: PHPUnit
     runs-on: ubuntu-latest

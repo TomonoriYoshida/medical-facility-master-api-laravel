@@ -24,7 +24,7 @@ class DownloadRhbDatasets extends Command
 
     public function handle(): int
     {
-        $bureaus = config('rhb.bureaus');
+        $bureaus = config()->array('rhb.bureaus');
 
         /** @var list<string> $requested */
         $requested = $this->option('bureau');

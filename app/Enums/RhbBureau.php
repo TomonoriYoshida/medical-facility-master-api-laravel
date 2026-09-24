@@ -24,6 +24,6 @@ enum RhbBureau: int
      */
     public function label(): string
     {
-        return collect(config('rhb.bureaus'))->firstWhere('bureau', $this)['label'];
+        return collect(config()->array('rhb.bureaus'))->firstWhere('bureau', $this)['label'];
     }
 }
