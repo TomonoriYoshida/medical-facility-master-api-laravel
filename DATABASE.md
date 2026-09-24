@@ -88,9 +88,10 @@ WHERE e.event_type = 1 -- Created
 | `local_path` | string | - | `Storage::disk('local')`上の保存パス（Git管理外） |
 | `published_on` | date | - | ページに記載された公開日 |
 | `downloaded_at` | datetime | - | 実際にダウンロードした日時 |
+| `imported_at` | datetime | ✓ | 取込（`rhb:import`）が失敗行なしで完了した日時。局×カテゴリの現行ダウンロードがすべて取込済みなら、日次の`rhb:import`はそのデータセットをスキップする（`--force`で強制再取込）。失敗行があった場合は設定せず、翌日の実行で再取込される |
 | `created_at` / `updated_at` | datetime | - | |
 
-`unique(bureau_code, category, filename)`により、同一バージョンの重複ダウンロード・重複行を防ぐ。「展開後の県×カテゴリ×ファイル」単位の状態は別テーブルに持たず、インポート実行のたびに`BundleExpander`で決定論的に再導出する（状態がドリフトする余地を増やさないため）。
+`unique(bureau_code, category, filename, published_on)`により、同一バージョンの重複ダウンロード・重複行を防ぐ（北海道のようにファイル名が毎月変わらない局があるため、公開日もキーに含める）。「展開後の県×カテゴリ×ファイル」単位の状態は別テーブルに持たず、インポート実行のたびに`BundleExpander`で決定論的に再導出する（状態がドリフトする余地を増やさないため）。
 
 ## `kanji_variants`
 

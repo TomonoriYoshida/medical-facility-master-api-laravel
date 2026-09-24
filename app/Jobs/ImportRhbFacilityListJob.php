@@ -30,6 +30,11 @@ use Throwable;
  * facility-then-department job pair, so no chain/ordering dependency
  * exists between different (bureau, category) jobs -- they are fully
  * independent and can run in any order or in parallel.
+ *
+ * Skips the whole dataset when every current download already has
+ * imported_at set (nothing new was published since the last clean import),
+ * unless $force is given -- e.g. after changing a parser/normalizer, when
+ * unchanged source data must still be re-imported.
  */
 class ImportRhbFacilityListJob implements ShouldQueue
 {
@@ -48,6 +53,7 @@ class ImportRhbFacilityListJob implements ShouldQueue
     public function __construct(
         public readonly RhbBureau $bureau,
         public readonly RhbCategory $category,
+        public readonly bool $force = false,
     ) {}
 
     public function handle(
@@ -63,6 +69,15 @@ class ImportRhbFacilityListJob implements ShouldQueue
 
         if ($downloads->isEmpty()) {
             Log::warning('rhb:import: no download recorded, skipping.', [
+                'bureau' => $this->bureau->name,
+                'category' => $this->category->name,
+            ]);
+
+            return;
+        }
+
+        if (! $this->force && $downloads->every(fn (RhbDatasetDownload $download): bool => $download->imported_at !== null)) {
+            Log::info('rhb:import: already imported, skipping.', [
                 'bureau' => $this->bureau->name,
                 'category' => $this->category->name,
             ]);
@@ -126,6 +141,14 @@ class ImportRhbFacilityListJob implements ShouldQueue
             'category' => $this->category->name,
             ...$counts,
         ]);
+
+        // Only a clean run counts as imported: leaving imported_at unset
+        // when rows were skipped makes the next daily run retry them.
+        if ($counts['skipped'] === 0) {
+            RhbDatasetDownload::query()
+                ->whereKey($downloads->modelKeys())
+                ->update(['imported_at' => now()]);
+        }
 
         // Every other row is already imported and reconciled by now, so
         // this only surfaces the skipped rows as a failed job (visible in

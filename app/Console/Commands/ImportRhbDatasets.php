@@ -25,7 +25,8 @@ use Illuminate\Support\Facades\Bus;
  */
 #[Signature('rhb:import
     {--bureau=* : 対象の局キーを絞り込む（config/rhb.phpのキー、指定なしは全局、繰り返し指定可）}
-    {--wait : バッチが完了するまで待機し、結果を表示する（ローカル動作確認用）}')]
+    {--wait : バッチが完了するまで待機し、結果を表示する（ローカル動作確認用）}
+    {--force : 取込済みのダウンロードも再取込する（パーサー・正規化処理の変更後など）}')]
 #[Description('Import the latest downloaded regional health bureau (地方厚生局) datasets into medical_facilities')]
 class ImportRhbDatasets extends Command
 {
@@ -52,7 +53,7 @@ class ImportRhbDatasets extends Command
 
         foreach ($bureaus as $meta) {
             foreach (RhbCategory::cases() as $category) {
-                $jobs[] = new ImportRhbFacilityListJob($meta['bureau'], $category);
+                $jobs[] = new ImportRhbFacilityListJob($meta['bureau'], $category, force: (bool) $this->option('force'));
             }
         }
 
