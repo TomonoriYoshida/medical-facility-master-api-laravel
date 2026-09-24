@@ -40,7 +40,10 @@ return [
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            // Must exceed ImportRhbFacilityListJob::$timeout (600s): a job
+            // still running past retry_after is handed to another worker
+            // and imported twice concurrently.
+            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 650),
             'after_commit' => false,
         ],
 
