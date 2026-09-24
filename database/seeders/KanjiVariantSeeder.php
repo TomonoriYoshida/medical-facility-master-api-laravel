@@ -40,6 +40,13 @@ class KanjiVariantSeeder extends Seeder
             ];
         }
 
-        KanjiVariant::query()->insert($rows);
+        // upsert (not insert) so the seeder can be re-run after the CSV is
+        // edited; follow it with `facilities:renormalize` to apply the
+        // change to existing facilities.
+        KanjiVariant::query()->upsert(
+            $rows,
+            uniqueBy: ['variant_character'],
+            update: ['canonical_character', 'source', 'updated_at'],
+        );
     }
 }
