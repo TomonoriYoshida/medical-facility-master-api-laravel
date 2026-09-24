@@ -147,4 +147,37 @@ class FacilityClosureReconcilerTest extends TestCase
         $this->assertCount(0, $closed);
         $this->assertSame(0, $facility->events()->count());
     }
+
+    public function test_an_excluded_facility_is_left_alone_even_with_a_stale_watermark(): void
+    {
+        $previousDownload = RhbDatasetDownload::factory()->create();
+        $currentDownload = RhbDatasetDownload::factory()->create();
+
+        $excluded = MedicalFacility::factory()->create([
+            'facility_code' => '0111000',
+            'institution_type' => InstitutionType::Hospital,
+            'prefecture_code' => '01',
+            'status' => MedicalFacilityStatus::Active,
+            'last_seen_rhb_dataset_download_id' => $previousDownload->id,
+        ]);
+        $notExcluded = MedicalFacility::factory()->create([
+            'facility_code' => '0111001',
+            'institution_type' => InstitutionType::Hospital,
+            'prefecture_code' => '01',
+            'status' => MedicalFacilityStatus::Active,
+            'last_seen_rhb_dataset_download_id' => $previousDownload->id,
+        ]);
+
+        $closed = (new FacilityClosureReconciler)->reconcile(
+            InstitutionType::Hospital,
+            '01',
+            $currentDownload,
+            excludedFacilityCodes: ['0111000'],
+        );
+
+        $this->assertCount(1, $closed);
+        $this->assertSame(MedicalFacilityStatus::Active, $excluded->fresh()->status);
+        $this->assertSame(0, $excluded->events()->count());
+        $this->assertSame(MedicalFacilityStatus::Closed, $notExcluded->fresh()->status);
+    }
 }
