@@ -78,6 +78,32 @@ class ImportRhbFacilityListJobTest extends TestCase
         $this->assertSame(MedicalFacilityStatus::Closed, $staleFacility->fresh()->status);
     }
 
+    public function test_a_previous_months_file_with_a_different_filename_is_not_reimported(): void
+    {
+        // Kanto-Shinetsu/Tohoku embed the month in the filename
+        // ("..._r{YYMM}..."), so last month's download does not share a
+        // filename with this month's -- it must still be treated as stale.
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+        ], filename: 'shitei_ika_r0805.xlsx', publishedOn: '2026-05-01');
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A改'),
+            $this->hospitalRow('2', '0111001', '新規病院'),
+        ], filename: 'shitei_ika_r0806.xlsx', publishedOn: '2026-06-01');
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        $this->assertDatabaseHas('medical_facilities', [
+            'facility_code' => '0111000',
+            'name' => '病院A改',
+        ]);
+        $this->assertDatabaseHas('medical_facilities', [
+            'facility_code' => '0111001',
+            'status' => MedicalFacilityStatus::Active,
+        ]);
+    }
+
     public function test_it_does_nothing_when_no_download_is_recorded(): void
     {
         ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);

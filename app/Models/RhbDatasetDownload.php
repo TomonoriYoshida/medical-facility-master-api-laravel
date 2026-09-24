@@ -27,31 +27,41 @@ class RhbDatasetDownload extends Model
 
     /**
      * Get the current download(s) recorded for a bureau + category pair --
-     * the most recently published row per distinct filename, not every
-     * row ever recorded. Two distinct considerations this reconciles:
+     * every row sharing the most recent published_on, not every row ever
+     * recorded. Two distinct considerations this reconciles:
      *
      * - A single category can legitimately have more than one
      *   concurrently-current file (e.g. Hokkaido publishes hospital and
      *   clinic data as two separate files, both under
-     *   RhbCategory::Medical) -- so there is no single "the latest" row
-     *   across the whole category.
-     * - Some bureaus (Hokkaido confirmed) never change a document's
-     *   filename between monthly updates, so successive `rhb:download`
-     *   runs accumulate multiple rows sharing the same filename but
-     *   different published_on -- only the most recent one per filename
-     *   is "current"; the rest are historical and must not be reprocessed.
+     *   RhbCategory::Medical; Kyushu publishes one zip per prefecture) --
+     *   so there is no single "the latest" row across the whole category.
+     *   Every BureauLinkResolver stamps all links resolved from one index
+     *   page with that page's single "current as of" date, so one
+     *   publication's files always share a published_on.
+     * - Filenames cannot identify "the same file across months": some
+     *   bureaus (Hokkaido confirmed) never change them, while others embed
+     *   the month (e.g. Kanto-Shinetsu's "shitei_ika_r{YYMM}.zip"), where
+     *   grouping by filename would treat every past month as current and
+     *   re-import it over the latest data.
      *
      * @return Collection<int, self>
      */
     public static function allFor(RhbBureau $bureau, RhbCategory $category): Collection
     {
+        $latestPublishedOn = static::query()
+            ->where('bureau_code', $bureau)
+            ->where('category', $category)
+            ->max('published_on');
+
+        if ($latestPublishedOn === null) {
+            return new Collection;
+        }
+
         return static::query()
             ->where('bureau_code', $bureau)
             ->where('category', $category)
-            ->orderByDesc('published_on')
-            ->get()
-            ->unique('filename')
-            ->values();
+            ->where('published_on', $latestPublishedOn)
+            ->get();
     }
 
     /**
