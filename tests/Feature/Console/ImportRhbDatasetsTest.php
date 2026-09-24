@@ -107,4 +107,32 @@ class ImportRhbDatasetsTest extends TestCase
             'institution_type' => InstitutionType::Hospital,
         ]);
     }
+
+    public function test_the_wait_flag_returns_failure_instead_of_hanging_when_a_job_fails(): void
+    {
+        Storage::fake('local');
+
+        $path = $this->createXlsx([
+            ['header'],
+            [
+                '1', '01,1248,9', str_repeat('あ', 300),
+                '〒005－0813札幌市南区川沿１３条２丁目１番３８号', '011-571-5670',
+                '医療法人　愛全会', '松原　泉', '昭47. 3. 1', "療養\u{3000}\u{3000} 206", '病院',
+            ],
+        ]);
+        $localPath = 'rhb/hokkaido/medical/hospital.xlsx';
+        Storage::disk('local')->put($localPath, file_get_contents($path));
+
+        RhbDatasetDownload::factory()->create([
+            'bureau_code' => RhbBureau::Hokkaido,
+            'category' => RhbCategory::Medical,
+            'prefecture_codes' => ['01'],
+            'filename' => 'hospital.xlsx',
+            'local_path' => $localPath,
+        ]);
+
+        $this->artisan('rhb:import', ['--bureau' => ['hokkaido'], '--wait' => true])
+            ->expectsOutputToContain('失敗')
+            ->assertExitCode(1);
+    }
 }

@@ -127,6 +127,32 @@ class ImportRhbFacilityListJobTest extends TestCase
         $this->assertDatabaseMissing('medical_facilities', ['facility_code' => '0111001']);
     }
 
+    public function test_the_job_is_marked_failed_when_any_row_fails_to_upsert(): void
+    {
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+            $this->hospitalRow('2', '0111001', str_repeat('あ', 300)),
+        ]);
+
+        $job = (new ImportRhbFacilityListJob(RhbBureau::Hokkaido, RhbCategory::Medical))->withFakeQueueInteractions();
+        app()->call([$job, 'handle']);
+
+        $job->assertFailed();
+        $this->assertDatabaseHas('medical_facilities', ['facility_code' => '0111000']);
+    }
+
+    public function test_the_job_is_not_marked_failed_when_every_row_is_upserted(): void
+    {
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+        ]);
+
+        $job = (new ImportRhbFacilityListJob(RhbBureau::Hokkaido, RhbCategory::Medical))->withFakeQueueInteractions();
+        app()->call([$job, 'handle']);
+
+        $job->assertNotFailed();
+    }
+
     public function test_an_existing_facility_whose_row_fails_to_upsert_is_not_closed(): void
     {
         $this->seedDownload(RhbCategory::Medical, [

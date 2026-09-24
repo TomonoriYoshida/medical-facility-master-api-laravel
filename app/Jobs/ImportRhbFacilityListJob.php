@@ -126,6 +126,17 @@ class ImportRhbFacilityListJob implements ShouldQueue
             'category' => $this->category->name,
             ...$counts,
         ]);
+
+        // Every other row is already imported and reconciled by now, so
+        // this only surfaces the skipped rows as a failed job (visible in
+        // failed_jobs and the batch's failure count) instead of a log line
+        // nobody reads. fail() rather than throwing: a retry would just
+        // re-run the whole dataset and hit the same deterministic failures.
+        if ($counts['skipped'] > 0) {
+            $this->fail(new RuntimeException(
+                "rhb:import: {$counts['skipped']} row(s) failed to upsert for {$this->bureau->name}/{$this->category->name}; see the error log for details.",
+            ));
+        }
     }
 
     private function resolveExpander(): BundleExpanderInterface
