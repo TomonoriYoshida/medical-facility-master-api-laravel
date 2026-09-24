@@ -5,7 +5,7 @@ parameters:
     paths:
         - app/
 
-    level: 6
+    level: 8
 
     # Read the array returned by each model's casts() method instead of its
     # declared `array<string, string>` return type; otherwise enum/date

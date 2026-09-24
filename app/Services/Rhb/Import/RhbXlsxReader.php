@@ -107,7 +107,9 @@ final class RhbXlsxReader
 
     private function columnIndex(string $cellRef): int
     {
-        preg_match('/^([A-Z]+)\d+$/', $cellRef, $matches);
+        if (preg_match('/^([A-Z]+)\d+$/', $cellRef, $matches) !== 1) {
+            throw new RuntimeException("Unexpected cell reference \"{$cellRef}\" in \"{$this->xlsxPath}\".");
+        }
 
         $index = 0;
 

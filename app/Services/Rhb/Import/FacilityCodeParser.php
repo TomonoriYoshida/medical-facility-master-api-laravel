@@ -24,7 +24,7 @@ final class FacilityCodeParser
     public function parse(array $rows): string
     {
         $raw = $rows[0][1] ?? '';
-        $digits = preg_replace('/\D/', '', $raw);
+        $digits = preg_replace('/\D/', '', $raw) ?? '';
 
         if (strlen($digits) !== 7) {
             throw new InvalidArgumentException("Unexpected facility code format: \"{$raw}\"");

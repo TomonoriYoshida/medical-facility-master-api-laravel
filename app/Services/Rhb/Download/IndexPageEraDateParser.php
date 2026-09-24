@@ -42,6 +42,7 @@ final class IndexPageEraDateParser
 
         $yearOffset = $eraYear === '元' ? 1 : (int) $eraYear;
 
-        return CarbonImmutable::create($startYear + $yearOffset - 1, $month, $day);
+        return CarbonImmutable::create($startYear + $yearOffset - 1, $month, $day)
+            ?? throw new InvalidArgumentException("Invalid date: {$era}{$eraYear}年{$month}月{$day}日");
     }
 }

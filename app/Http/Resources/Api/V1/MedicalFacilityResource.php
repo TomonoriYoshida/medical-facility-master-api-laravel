@@ -39,8 +39,8 @@ class MedicalFacilityResource extends JsonResource
             'designation_history' => $this->designation_history,
             'bed_counts' => $this->bed_counts,
             'department_categories' => $this->department_categories
-                ->map(fn (DepartmentBaseCategory $category): array => $this->codeAndLabel($category))
-                ->values(),
+                ?->map(fn (DepartmentBaseCategory $category): array => $this->codeAndLabel($category))
+                ->values() ?? [],
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
