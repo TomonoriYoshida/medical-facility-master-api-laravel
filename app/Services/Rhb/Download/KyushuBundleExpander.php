@@ -6,7 +6,6 @@ use App\Enums\RhbCategory;
 use App\Models\RhbDatasetDownload;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
-use ZipArchive;
 
 /**
  * For 九州厚生局, whose zip bundles all 3 categories for ONE prefecture
@@ -48,40 +47,32 @@ final class KyushuBundleExpander implements BundleExpanderInterface
         'okinawa' => '47',
     ];
 
+    public function __construct(
+        private readonly ZipBundleReader $zipBundleReader = new ZipBundleReader,
+    ) {}
+
     public function expand(RhbDatasetDownload $download): array
     {
         $zipPath = Storage::disk('local')->path($download->local_path);
         $extractDir = "rhb/kyushu/extracted/{$download->id}";
         $categorySlug = self::CATEGORY_SLUGS[$download->category->value];
 
-        $zip = new ZipArchive;
-
-        if ($zip->open($zipPath) !== true) {
-            throw new RuntimeException("Unable to open zip \"{$zipPath}\" (download #{$download->id}).");
-        }
-
-        try {
-            for ($i = 0; $i < $zip->numFiles; $i++) {
-                $entryName = $zip->getNameIndex($i);
-
-                if (! str_ends_with($entryName, '.xlsx') || ! str_contains($entryName, "_{$categorySlug}_")) {
-                    continue;
-                }
-
-                $prefectureCode = $this->resolvePrefectureCode($entryName, $download->id);
-
-                $targetPath = "{$extractDir}/".basename($entryName);
-                Storage::disk('local')->put($targetPath, $zip->getFromIndex($i));
-
-                return [new RhbFileUnit(
-                    bureau: $download->bureau_code,
-                    category: $download->category,
-                    prefectureCode: $prefectureCode,
-                    xlsxPath: Storage::disk('local')->path($targetPath),
-                )];
+        foreach ($this->zipBundleReader->entries($zipPath, $download->id) as $entryName => $readContents) {
+            if (! str_ends_with($entryName, '.xlsx') || ! str_contains($entryName, "_{$categorySlug}_")) {
+                continue;
             }
-        } finally {
-            $zip->close();
+
+            $prefectureCode = $this->resolvePrefectureCode($entryName, $download->id);
+
+            $targetPath = "{$extractDir}/".basename($entryName);
+            Storage::disk('local')->put($targetPath, $readContents());
+
+            return [new RhbFileUnit(
+                bureau: $download->bureau_code,
+                category: $download->category,
+                prefectureCode: $prefectureCode,
+                xlsxPath: Storage::disk('local')->path($targetPath),
+            )];
         }
 
         throw new RuntimeException("Unable to find a \"{$categorySlug}\" entry in zip \"{$zipPath}\" (download #{$download->id}).");

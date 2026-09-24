@@ -20,6 +20,8 @@ final class AddressNormalizer
     {
         $value = $this->itaijiNormalizer->normalize($value);
 
-        return preg_replace('/(?<=\d)ー(?=\d)/u', '-', $value);
+        // preg_replace() returns null for invalid UTF-8; fall back to the
+        // NFKC/itaiji-normalized value, as ItaijiNormalizer itself does.
+        return preg_replace('/(?<=\d)ー(?=\d)/u', '-', $value) ?? $value;
     }
 }

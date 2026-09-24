@@ -5,7 +5,6 @@ namespace App\Services\Rhb\Download;
 use App\Models\RhbDatasetDownload;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
-use ZipArchive;
 
 /**
  * For 四国厚生局, which bundles one .xlsx per prefecture into a single ZIP
@@ -34,41 +33,33 @@ final class ShikokuBundleExpander implements BundleExpanderInterface
         '高知' => '39',
     ];
 
+    public function __construct(
+        private readonly ZipBundleReader $zipBundleReader = new ZipBundleReader,
+    ) {}
+
     public function expand(RhbDatasetDownload $download): array
     {
         $zipPath = Storage::disk('local')->path($download->local_path);
         $extractDir = "rhb/shikoku/extracted/{$download->id}";
 
-        $zip = new ZipArchive;
-
-        if ($zip->open($zipPath) !== true) {
-            throw new RuntimeException("Unable to open zip \"{$zipPath}\" (download #{$download->id}).");
-        }
-
         $units = [];
 
-        try {
-            for ($i = 0; $i < $zip->numFiles; $i++) {
-                $entryName = $zip->getNameIndex($i);
-
-                if (! str_ends_with($entryName, '.xlsx')) {
-                    continue;
-                }
-
-                $prefectureCode = $this->resolvePrefectureCode($entryName, $download->id);
-
-                $targetPath = "{$extractDir}/".basename($entryName);
-                Storage::disk('local')->put($targetPath, $zip->getFromIndex($i));
-
-                $units[] = new RhbFileUnit(
-                    bureau: $download->bureau_code,
-                    category: $download->category,
-                    prefectureCode: $prefectureCode,
-                    xlsxPath: Storage::disk('local')->path($targetPath),
-                );
+        foreach ($this->zipBundleReader->entries($zipPath, $download->id) as $entryName => $readContents) {
+            if (! str_ends_with($entryName, '.xlsx')) {
+                continue;
             }
-        } finally {
-            $zip->close();
+
+            $prefectureCode = $this->resolvePrefectureCode($entryName, $download->id);
+
+            $targetPath = "{$extractDir}/".basename($entryName);
+            Storage::disk('local')->put($targetPath, $readContents());
+
+            $units[] = new RhbFileUnit(
+                bureau: $download->bureau_code,
+                category: $download->category,
+                prefectureCode: $prefectureCode,
+                xlsxPath: Storage::disk('local')->path($targetPath),
+            );
         }
 
         return $units;

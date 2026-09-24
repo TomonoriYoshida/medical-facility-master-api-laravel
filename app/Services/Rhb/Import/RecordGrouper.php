@@ -21,30 +21,29 @@ final class RecordGrouper
      */
     public function group(iterable $rows): Generator
     {
-        $buffer = [];
-        $serial = null;
+        /** @var array{serial: int, rows: list<array<int, string>>}|null $record */
+        $record = null;
 
         foreach ($rows as $row) {
             $a = trim($row[0] ?? '');
 
             if ($a !== '' && ctype_digit($a)) {
-                if ($buffer !== []) {
-                    yield ['serial' => $serial, 'rows' => $buffer];
+                if ($record !== null) {
+                    yield $record;
                 }
 
-                $buffer = [];
-                $serial = (int) $a;
+                $record = ['serial' => (int) $a, 'rows' => []];
             }
 
-            if ($serial === null) {
+            if ($record === null) {
                 continue;
             }
 
-            $buffer[] = $row;
+            $record['rows'][] = $row;
         }
 
-        if ($buffer !== []) {
-            yield ['serial' => $serial, 'rows' => $buffer];
+        if ($record !== null) {
+            yield $record;
         }
     }
 }

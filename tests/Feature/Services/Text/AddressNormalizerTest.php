@@ -27,6 +27,13 @@ class AddressNormalizerTest extends TestCase
         $this->assertSame('浜松市中央区丸塚町157-1', $normalizer->normalize('浜松市中央区丸塚町１５７ー１'));
     }
 
+    public function test_invalid_utf8_is_returned_unchanged_instead_of_null(): void
+    {
+        $normalizer = new AddressNormalizer(new ItaijiNormalizer);
+
+        $this->assertSame("\xFF", $normalizer->normalize("\xFF"));
+    }
+
     public function test_a_katakana_chōon_inside_a_building_name_is_left_unchanged(): void
     {
         // Regression test: the same mark is also legitimately used inside

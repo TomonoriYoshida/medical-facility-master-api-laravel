@@ -90,6 +90,14 @@ class ImportRhbDatasets extends Command
             }
 
             $batch = $batch->fresh();
+
+            // fresh() is null once the batch row is gone, e.g. pruned by
+            // queue:prune-batches while this command was still waiting.
+            if ($batch === null) {
+                $this->components->error('バッチが見つかりません（削除された可能性があります）。');
+
+                return Command::FAILURE;
+            }
         }
 
         $this->components->twoColumnDetail('成功', (string) ($batch->totalJobs - $batch->failedJobs));
