@@ -118,16 +118,25 @@ final class FacilityUpserter
 
         $changes = AttributeDiff::diff($current, $mappedAttributes);
 
+        if ($changes === []) {
+            // Deliberately not fill()-ing the mapped attributes here: MySQL
+            // reorders JSON object keys on storage and Eloquent's dirty check
+            // compares decoded JSON key-order-sensitively, so doing so would
+            // rewrite every unchanged row on every import. Only the
+            // watermark moves, and without touching updated_at, which is
+            // exposed by the API as "when this facility's data last changed".
+            $facility->last_seen_rhb_dataset_download_id = $download->id;
+            MedicalFacility::withoutTimestamps(fn () => $facility->save());
+
+            return ['facility' => $facility, 'outcome' => FacilityUpsertOutcome::Unchanged];
+        }
+
         return DB::transaction(function () use ($facility, $mappedAttributes, $download, $changes) {
             $facility->fill([
                 ...$mappedAttributes,
                 'last_seen_rhb_dataset_download_id' => $download->id,
             ]);
             $facility->save();
-
-            if ($changes === []) {
-                return ['facility' => $facility, 'outcome' => FacilityUpsertOutcome::Unchanged];
-            }
 
             $this->recordEvent($facility, MedicalFacilityEventType::Updated, $download, $changes);
 

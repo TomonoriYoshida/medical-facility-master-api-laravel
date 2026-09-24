@@ -43,7 +43,7 @@ medical_facilities (1) ──< (多) medical_facility_events
 | `designation_history` | json, nullable | ✓ | 指定年月日欄に埋め込まれた処理履歴（新規／組織変更／交代等の事由と日付のペアの配列）。**`medical_facility_events`には流し込まない**——events テーブルは「自分（インポーター）が今回の同期で検知した変化」を意味する追記専用ログであり、この履歴はインポート開始以前から存在する情報のため意味が異なる。単なるマップ済み属性として通常の差分検出（`AttributeDiff`）の対象にする |
 | `bed_counts` | json, nullable | ✓ | 病床種別（療養／一般／精神等）→ 病床数のラベル付き辞書。薬局は常にnull |
 | `department_categories` | json, nullable | ✓ | `App\Enums\DepartmentBaseCategory`値の配列（`AsEnumCollection`キャスト）。医科・歯科のみ、薬局は常に空配列。原本の診療科目欄は「基本診療科名＋自由な修飾語」の組み合わせ命名が医療法施行規則で公式に許容されており事実上自由記述に近いため、修飾語を含む完全一致ではなく「大分類（内科系・外科系など）のどれに該当するか」というマーカーマッチによる粗い分類に留めている（実データ検証で出現件数の96.3%を分類可能と確認済み。完全一致の復元は制度上原理的に不可能） |
-| `created_at` / `updated_at` | datetime | - | |
+| `created_at` / `updated_at` | datetime | - | `updated_at`は施設データ（マップ済み属性）が実際に変わった時だけ更新される。取込のたびに行う`last_seen_rhb_dataset_download_id`の更新や、`facilities:renormalize`による正規化カラムの再計算では変わらない（APIでも「施設情報の最終更新日時」として返しているため） |
 
 インデックス: `institution_type`、`status`、`prefecture_code`、`name_normalized`。`unique(bureau_code, prefecture_code, institution_type, facility_code)`。複合インデックス`medical_facilities_reconcile_index`（`institution_type`, `prefecture_code`, `status`, `last_seen_rhb_dataset_download_id`）は廃業検知クエリ用——`prefecture_code`を含むのは、1件の`rhb_dataset_downloads`行が複数県をまとめて束ねる局（東北・関東信越等）が存在するため、廃業検知が誤って別県の施設まで対象にしないためのスコープ絞り込み。
 
