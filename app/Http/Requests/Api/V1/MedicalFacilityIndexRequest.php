@@ -44,7 +44,7 @@ class MedicalFacilityIndexRequest extends FormRequest
             'department_category' => ['sometimes', Rule::enum(DepartmentBaseCategory::class)],
 
             /** 施設名・住所のあいまい検索キーワード（全角半角・異体字ゆれを吸収） */
-            'q' => ['sometimes', 'string', 'max:255'],
+            'q' => ['sometimes', 'string', 'encoding:UTF-8', 'max:255'],
 
             /** 1ページあたりの件数（デフォルト25、最大100） */
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],

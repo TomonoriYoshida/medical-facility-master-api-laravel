@@ -227,6 +227,30 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $response->assertJsonCount(0, 'data');
     }
 
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function invalidUtf8SearchTermProvider(): array
+    {
+        return [
+            'lone invalid byte' => ['%FF'],
+            'truncated multibyte character' => ['%E3%81'],
+        ];
+    }
+
+    /**
+     * Invalid UTF-8 used to reach AddressNormalizer, whose preg_replace()
+     * returns null for it, and surface as a 500 TypeError.
+     */
+    #[DataProvider('invalidUtf8SearchTermProvider')]
+    public function test_returns_422_when_q_is_not_valid_utf8(string $encodedTerm): void
+    {
+        $response = $this->getJson('/api/v1/medical-facilities?q='.$encodedTerm);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('q');
+    }
+
     public function test_returns_422_when_institution_type_is_not_a_valid_enum_value(): void
     {
         $response = $this->getJson('/api/v1/medical-facilities?institution_type=999');
