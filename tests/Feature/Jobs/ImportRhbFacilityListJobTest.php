@@ -3,6 +3,7 @@
 namespace Tests\Feature\Jobs;
 
 use App\Enums\InstitutionType;
+use App\Enums\MedicalFacilityEventType;
 use App\Enums\MedicalFacilityStatus;
 use App\Enums\RhbBureau;
 use App\Enums\RhbCategory;
@@ -124,6 +125,34 @@ class ImportRhbFacilityListJobTest extends TestCase
         $this->assertDatabaseHas('medical_facilities', ['facility_code' => '0111000']);
         $this->assertDatabaseHas('medical_facilities', ['facility_code' => '0111002']);
         $this->assertDatabaseMissing('medical_facilities', ['facility_code' => '0111001']);
+    }
+
+    public function test_an_existing_facility_whose_row_fails_to_upsert_is_not_closed(): void
+    {
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+            $this->hospitalRow('2', '0111001', '病院B'),
+            $this->hospitalRow('3', '0111002', '病院C'),
+        ], filename: 'hospital.xlsx', publishedOn: '2026-05-01');
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        // 病院A is still listed but its row now fails to upsert; 病院C is
+        // genuinely gone and must still be closed.
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', str_repeat('あ', 300)),
+            $this->hospitalRow('2', '0111001', '病院B'),
+        ], filename: 'hospital.xlsx', publishedOn: '2026-06-01');
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        $failed = MedicalFacility::where('facility_code', '0111000')->first();
+        $this->assertSame(MedicalFacilityStatus::Active, $failed->status);
+        $this->assertSame('病院A', $failed->name);
+        $this->assertFalse($failed->events()->where('event_type', MedicalFacilityEventType::Removed)->exists());
+
+        $this->assertDatabaseHas('medical_facilities', [
+            'facility_code' => '0111002',
+            'status' => MedicalFacilityStatus::Closed,
+        ]);
     }
 
     public function test_hospital_and_clinic_files_under_the_same_medical_category_are_both_processed_and_reconciled_separately(): void

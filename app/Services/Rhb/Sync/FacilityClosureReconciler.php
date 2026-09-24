@@ -34,15 +34,25 @@ final class FacilityClosureReconciler
     private const int CHUNK_SIZE = 500;
 
     /**
+     * $excludedFacilityCodes lists facilities that were present in this
+     * download but whose upsert failed: they were seen, so must not be
+     * closed even though their watermark is stale.
+     *
+     * @param  list<string>  $excludedFacilityCodes
      * @return Collection<int, MedicalFacility>
      */
-    public function reconcile(InstitutionType $institutionType, string $prefectureCode, RhbDatasetDownload $download): Collection
-    {
+    public function reconcile(
+        InstitutionType $institutionType,
+        string $prefectureCode,
+        RhbDatasetDownload $download,
+        array $excludedFacilityCodes = [],
+    ): Collection {
         $closed = collect();
 
         MedicalFacility::query()
             ->where('institution_type', $institutionType)
             ->where('prefecture_code', $prefectureCode)
+            ->whereNotIn('facility_code', $excludedFacilityCodes)
             ->whereIn('status', [MedicalFacilityStatus::Active, MedicalFacilityStatus::Suspended])
             ->where(function ($query) use ($download) {
                 $query->whereNull('last_seen_rhb_dataset_download_id')

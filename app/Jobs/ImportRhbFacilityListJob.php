@@ -77,14 +77,21 @@ class ImportRhbFacilityListJob implements ShouldQueue
         /** @var array<string, array{institutionType: InstitutionType, prefectureCode: string, download: RhbDatasetDownload}> $reconcileTargets */
         $reconcileTargets = [];
 
+        // A row whose upsert failed is still present in the dataset, but
+        // its last_seen_rhb_dataset_download_id was never advanced -- left
+        // alone, reconciliation would wrongly close it as "disappeared".
+        /** @var array<string, list<string>> $failedFacilityCodes */
+        $failedFacilityCodes = [];
+
         foreach ($downloads as $download) {
             foreach ($expander->expand($download) as $unit) {
                 foreach ($rowSource->rows($unit->xlsxPath, $unit->category, $unit->bureau, $unit->prefectureCode, $unit->sheetName) as $mapped) {
+                    $key = "{$mapped['institution_type']->value}:{$unit->prefectureCode}";
+
                     try {
                         $result = $upserter->upsert($mapped, $download);
                         $counts[strtolower($result['outcome']->name)]++;
 
-                        $key = "{$mapped['institution_type']->value}:{$unit->prefectureCode}";
                         $reconcileTargets[$key] = [
                             'institutionType' => $mapped['institution_type'],
                             'prefectureCode' => $unit->prefectureCode,
@@ -92,6 +99,8 @@ class ImportRhbFacilityListJob implements ShouldQueue
                         ];
                     } catch (Throwable $e) {
                         $counts['skipped']++;
+                        $failedFacilityCodes[$key][] = $mapped['facility_code'];
+
                         Log::error('rhb:import: failed to upsert facility row', [
                             'bureau' => $this->bureau->name,
                             'category' => $this->category->name,
@@ -103,8 +112,13 @@ class ImportRhbFacilityListJob implements ShouldQueue
             }
         }
 
-        foreach ($reconcileTargets as $target) {
-            $reconciler->reconcile($target['institutionType'], $target['prefectureCode'], $target['download']);
+        foreach ($reconcileTargets as $key => $target) {
+            $reconciler->reconcile(
+                $target['institutionType'],
+                $target['prefectureCode'],
+                $target['download'],
+                excludedFacilityCodes: $failedFacilityCodes[$key] ?? [],
+            );
         }
 
         Log::info('rhb:import: dataset finished', [
