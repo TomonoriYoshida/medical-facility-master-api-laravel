@@ -59,13 +59,25 @@ class MedicalFacilityController extends Controller
      */
     private function applySearch(Builder $query, string $term): Builder
     {
-        $normalizedName = $this->itaijiNormalizer->normalize($term);
-        $normalizedAddress = $this->addressNormalizer->normalize($term);
+        // Escape after normalizing, not before: NFKC turns full-width
+        // "％＿＼" into the LIKE metacharacters "%_\" themselves.
+        $namePattern = '%'.$this->escapeLike($this->itaijiNormalizer->normalize($term)).'%';
+        $addressPattern = '%'.$this->escapeLike($this->addressNormalizer->normalize($term)).'%';
 
-        return $query->where(function ($query) use ($normalizedName, $normalizedAddress): void {
-            $query->where('name_normalized', 'like', "%{$normalizedName}%")
-                ->orWhere('address_normalized', 'like', "%{$normalizedAddress}%");
+        return $query->where(function ($query) use ($namePattern, $addressPattern): void {
+            $query->where('name_normalized', 'like', $namePattern)
+                ->orWhere('address_normalized', 'like', $addressPattern);
         });
+    }
+
+    /**
+     * Makes user input match literally inside a LIKE pattern. Backslash
+     * must be escaped first, since it is MySQL's default LIKE escape
+     * character and the other replacements introduce new backslashes.
+     */
+    private function escapeLike(string $value): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
     }
 
     /**
