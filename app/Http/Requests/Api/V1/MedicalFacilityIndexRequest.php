@@ -28,8 +28,8 @@ class MedicalFacilityIndexRequest extends FormRequest
     public function rules(): array
     {
         return [
-            /** 都道府県コード（2桁） */
-            'prefecture_code' => ['sometimes', 'string', 'size:2'],
+            /** 都道府県コード（JIS X 0401の2桁、01〜47） */
+            'prefecture_code' => ['sometimes', 'string', 'regex:/^(0[1-9]|[1-3][0-9]|4[0-7])$/'],
 
             /** 施設種別 */
             'institution_type' => ['sometimes', Rule::enum(InstitutionType::class)],
