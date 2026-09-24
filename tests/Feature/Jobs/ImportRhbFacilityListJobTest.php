@@ -171,6 +171,30 @@ class ImportRhbFacilityListJobTest extends TestCase
         $this->assertNull($download->fresh()->imported_at);
     }
 
+    public function test_the_database_queue_retry_after_exceeds_the_job_timeout(): void
+    {
+        $timeout = (new ImportRhbFacilityListJob(RhbBureau::Hokkaido, RhbCategory::Medical))->timeout;
+
+        $this->assertGreaterThan($timeout, config('queue.connections.database.retry_after'));
+
+        // The config file's own default must hold too, for environments
+        // that never set DB_QUEUE_RETRY_AFTER.
+        $original = getenv('DB_QUEUE_RETRY_AFTER');
+        putenv('DB_QUEUE_RETRY_AFTER');
+        unset($_ENV['DB_QUEUE_RETRY_AFTER'], $_SERVER['DB_QUEUE_RETRY_AFTER']);
+
+        try {
+            $default = (require config_path('queue.php'))['connections']['database']['retry_after'];
+        } finally {
+            if ($original !== false) {
+                putenv("DB_QUEUE_RETRY_AFTER={$original}");
+                $_ENV['DB_QUEUE_RETRY_AFTER'] = $_SERVER['DB_QUEUE_RETRY_AFTER'] = $original;
+            }
+        }
+
+        $this->assertGreaterThan($timeout, $default);
+    }
+
     public function test_it_does_nothing_when_no_download_is_recorded(): void
     {
         ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
