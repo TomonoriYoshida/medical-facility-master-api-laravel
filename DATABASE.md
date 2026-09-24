@@ -118,6 +118,14 @@ WHERE e.event_type = 1 -- Created
 
 `MedicalFacility`保存時（`saving`イベント）に`MedicalFacilityObserver`が`name`の変更を検知して自動的に`name_normalized`を計算する。`DatabaseSeeder`は`WithoutModelEvents`を使用しているため、将来`MedicalFacility`を一括生成するインポート処理で同様の設定を使う場合は、正規化カラムが自動計算されない点に注意（明示的に`ItaijiNormalizer`を呼び出す必要がある）。
 
+#### 異体字マスタを更新するとき
+
+Observerは`name`/`address`が変わった時しか正規化カラムを再計算しないため、マッピングを追加・修正しても既存の施設には反映されない。次の手順で反映する。
+
+1. `database/seeders/data/itaiji-mapping.csv`を編集する
+2. `sail artisan db:seed --class=KanjiVariantSeeder` — `variant_character`をキーにupsertするため再実行できる（CSVから削除した行はテーブルに残るので、削除する場合は手動で消す）
+3. `sail artisan facilities:renormalize` — 全施設の`name_normalized`/`address_normalized`を再計算する（`updated_at`は変更しない）。`ItaijiNormalizer`はマッピングをプロセス単位でメモ化しているため、最後に`queue:restart`で常駐のキューワーカーに再起動を指示する
+
 異体字変換を別APIとして切り出すことも検討したが、現時点では利用者がこのアプリ1つのみでありYAGNIと判断し、アプリ内に閉じて実装した。
 
 ### 住所正規化ロジック（`App\Services\Text\AddressNormalizer`）
