@@ -18,6 +18,12 @@ class MedicalFacilityController extends Controller
         private readonly AddressNormalizer $addressNormalizer,
     ) {}
 
+    /**
+     * 施設一覧・検索
+     *
+     * 医療施設マスタをページネーション付きで返します。`q` は施設名・住所の全角半角/異体字ゆれを
+     * 吸収したあいまい検索です。
+     */
     public function index(MedicalFacilityIndexRequest $request): AnonymousResourceCollection
     {
         $filters = $request->validated();
@@ -36,6 +42,11 @@ class MedicalFacilityController extends Controller
             ->additional(['meta' => ['attribution' => $this->attribution()]]);
     }
 
+    /**
+     * 施設詳細
+     *
+     * idを指定して医療施設マスタの1件を返します。
+     */
     public function show(MedicalFacility $medicalFacility): MedicalFacilityResource
     {
         return (new MedicalFacilityResource($medicalFacility))
