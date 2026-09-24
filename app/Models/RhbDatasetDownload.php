@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Model;
     'local_path',
     'published_on',
     'downloaded_at',
+    'imported_at',
 ])]
 class RhbDatasetDownload extends Model
 {
@@ -77,6 +78,7 @@ class RhbDatasetDownload extends Model
             'prefecture_codes' => 'array',
             'published_on' => 'date',
             'downloaded_at' => 'datetime',
+            'imported_at' => 'datetime',
         ];
     }
 }

@@ -105,6 +105,72 @@ class ImportRhbFacilityListJobTest extends TestCase
         ]);
     }
 
+    public function test_a_clean_run_marks_every_current_download_as_imported(): void
+    {
+        $hospital = $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+        ], filename: 'hospital.xlsx');
+        $clinic = $this->seedDownload(RhbCategory::Medical, [
+            $this->clinicRow('1', '0121000', '診療所A'),
+        ], filename: 'clinic.xlsx');
+
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        $this->assertNotNull($hospital->fresh()->imported_at);
+        $this->assertNotNull($clinic->fresh()->imported_at);
+    }
+
+    public function test_it_skips_when_every_current_download_is_already_imported(): void
+    {
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+        ])->update(['imported_at' => now()]);
+
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        $this->assertDatabaseCount('medical_facilities', 0);
+    }
+
+    public function test_it_reimports_when_only_some_current_downloads_are_imported(): void
+    {
+        // e.g. the clinic file failed to download yesterday and arrived
+        // today with the same published_on as the already-imported one.
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+        ], filename: 'hospital.xlsx')->update(['imported_at' => now()]);
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->clinicRow('1', '0121000', '診療所A'),
+        ], filename: 'clinic.xlsx');
+
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        $this->assertDatabaseHas('medical_facilities', ['facility_code' => '0111000']);
+        $this->assertDatabaseHas('medical_facilities', ['facility_code' => '0121000']);
+    }
+
+    public function test_force_reimports_an_already_imported_download(): void
+    {
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+        ])->update(['imported_at' => now()]);
+
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical, force: true);
+
+        $this->assertDatabaseHas('medical_facilities', ['facility_code' => '0111000']);
+    }
+
+    public function test_a_run_with_skipped_rows_leaves_the_download_unimported_so_it_is_retried(): void
+    {
+        $download = $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+            $this->hospitalRow('2', '0111001', str_repeat('あ', 300)),
+        ]);
+
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        $this->assertNull($download->fresh()->imported_at);
+    }
+
     public function test_it_does_nothing_when_no_download_is_recorded(): void
     {
         ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);

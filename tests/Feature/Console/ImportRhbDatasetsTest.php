@@ -72,6 +72,24 @@ class ImportRhbDatasetsTest extends TestCase
         Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->count() === 3);
     }
 
+    public function test_the_force_option_is_passed_to_every_job(): void
+    {
+        Bus::fake();
+
+        $this->artisan('rhb:import', ['--bureau' => ['hokkaido'], '--force' => true])->assertExitCode(0);
+
+        Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->every(fn (ImportRhbFacilityListJob $job): bool => $job->force));
+    }
+
+    public function test_jobs_are_not_forced_by_default(): void
+    {
+        Bus::fake();
+
+        $this->artisan('rhb:import', ['--bureau' => ['hokkaido']])->assertExitCode(0);
+
+        Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->every(fn (ImportRhbFacilityListJob $job): bool => ! $job->force));
+    }
+
     public function test_an_unknown_bureau_key_is_rejected(): void
     {
         $this->artisan('rhb:import', ['--bureau' => ['unknown']])->assertExitCode(1);
