@@ -16,7 +16,7 @@ class IndexMedicalFacilityControllerTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_returns_paginated_facilities_with_japanese_enum_labels(): void
+    public function test_returns_paginated_facilities_with_enum_codes_and_japanese_labels(): void
     {
         $facility = MedicalFacility::factory()->create([
             'institution_type' => InstitutionType::Hospital,
@@ -29,9 +29,58 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $response->assertOk();
         $response->assertJsonCount(1, 'data');
         $response->assertJsonPath('data.0.id', $facility->id);
-        $response->assertJsonPath('data.0.institution_type', '病院');
-        $response->assertJsonPath('data.0.status', '指定中');
-        $response->assertJsonPath('data.0.bureau_code', '北海道厚生局');
+        $response->assertJsonPath('data.0.institution_type', ['code' => 1, 'label' => '病院']);
+        $response->assertJsonPath('data.0.status', ['code' => 1, 'label' => '指定中']);
+        $response->assertJsonPath('data.0.bureau', ['code' => 1, 'label' => '北海道厚生局']);
+    }
+
+    public function test_a_returned_enum_code_can_be_fed_back_as_the_corresponding_filter(): void
+    {
+        $clinic = MedicalFacility::factory()->create([
+            'institution_type' => InstitutionType::Clinic,
+            'bureau_code' => RhbBureau::Tohoku,
+            'department_categories' => [DepartmentBaseCategory::Dermatology],
+        ]);
+        MedicalFacility::factory()->create([
+            'institution_type' => InstitutionType::Hospital,
+            'bureau_code' => RhbBureau::Hokkaido,
+            'department_categories' => [DepartmentBaseCategory::Surgery],
+        ]);
+
+        $shown = $this->getJson("/api/v1/medical-facilities/{$clinic->id}")->json('data');
+
+        $response = $this->getJson('/api/v1/medical-facilities?'.http_build_query([
+            'institution_type' => $shown['institution_type']['code'],
+            'status' => $shown['status']['code'],
+            'bureau_code' => $shown['bureau']['code'],
+            'department_category' => $shown['department_categories'][0]['code'],
+        ]));
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $clinic->id);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function invalidPrefectureCodeProvider(): array
+    {
+        return [
+            'zero' => ['00'],
+            'above 47' => ['48'],
+            'non-numeric' => ['ab'],
+            'single digit' => ['1'],
+        ];
+    }
+
+    #[DataProvider('invalidPrefectureCodeProvider')]
+    public function test_returns_422_when_prefecture_code_is_not_a_valid_jis_code(string $prefectureCode): void
+    {
+        $response = $this->getJson('/api/v1/medical-facilities?prefecture_code='.$prefectureCode);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('prefecture_code');
     }
 
     public function test_response_includes_attribution_meta_for_all_eight_bureaus(): void

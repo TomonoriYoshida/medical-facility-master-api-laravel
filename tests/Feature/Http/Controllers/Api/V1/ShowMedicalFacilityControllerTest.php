@@ -14,7 +14,7 @@ class ShowMedicalFacilityControllerTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_returns_the_full_facility_with_japanese_enum_labels(): void
+    public function test_returns_the_full_facility_with_enum_codes_and_japanese_labels(): void
     {
         $facility = MedicalFacility::factory()->create([
             'institution_type' => InstitutionType::Clinic,
@@ -29,10 +29,16 @@ class ShowMedicalFacilityControllerTest extends TestCase
         $response->assertJsonPath('data.id', $facility->id);
         $response->assertJsonPath('data.facility_code', $facility->facility_code);
         $response->assertJsonPath('data.name', $facility->name);
-        $response->assertJsonPath('data.institution_type', '診療所');
-        $response->assertJsonPath('data.status', '指定中');
-        $response->assertJsonPath('data.bureau_code', '北海道厚生局');
-        $response->assertJsonPath('data.department_categories', ['循環器内科', '皮膚科']);
+        $response->assertJsonPath('data.institution_type', ['code' => 2, 'label' => '診療所']);
+        $response->assertJsonPath('data.status', ['code' => 1, 'label' => '指定中']);
+        $response->assertJsonPath('data.bureau', ['code' => 1, 'label' => '北海道厚生局']);
+        $response->assertJsonPath('data.department_categories', [
+            ['code' => 23, 'label' => '循環器内科'],
+            ['code' => 4, 'label' => '皮膚科'],
+        ]);
+        $response->assertJsonMissingPath('data.bureau_code');
+        $response->assertJsonMissingPath('data.latitude');
+        $response->assertJsonMissingPath('data.longitude');
     }
 
     public function test_includes_attribution_meta(): void
