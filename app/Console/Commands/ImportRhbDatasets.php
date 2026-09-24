@@ -79,7 +79,11 @@ class ImportRhbDatasets extends Command
 
     private function waitForBatch(Batch $batch): int
     {
-        while (! $batch->finished()) {
+        // finished() alone is not enough: Laravel never sets finished_at on
+        // a batch with a failed job (it stays "pending" awaiting a retry),
+        // so waiting on it would hang forever after any job failure.
+        // pendingJobs === failedJobs means every job has run exactly once.
+        while (! $batch->finished() && $batch->pendingJobs > $batch->failedJobs) {
             if (! app()->environment('testing')) {
                 usleep(500_000);
             }
