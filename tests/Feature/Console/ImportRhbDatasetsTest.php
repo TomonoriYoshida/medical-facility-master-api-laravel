@@ -118,7 +118,9 @@ class ImportRhbDatasetsTest extends TestCase
             'local_path' => $localPath,
         ]);
 
-        $this->artisan('rhb:import', ['--wait' => true])->assertExitCode(0);
+        $this->artisan('rhb:import', ['--wait' => true])
+            ->doesntExpectOutputToContain('WARN')
+            ->assertExitCode(0);
 
         $this->assertDatabaseHas('medical_facilities', [
             'facility_code' => '0112489',
