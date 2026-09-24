@@ -9,6 +9,7 @@ use App\Enums\RhbBureau;
 use App\Models\KanjiVariant;
 use App\Models\MedicalFacility;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class IndexMedicalFacilityControllerTest extends TestCase
@@ -138,6 +139,43 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $response->assertOk();
         $response->assertJsonCount(1, 'data');
         $response->assertJsonPath('data.0.id', $matching->id);
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function likeMetacharacterProvider(): array
+    {
+        return [
+            'percent' => ['%', '100%クリニック'],
+            'underscore' => ['_', 'A_B病院'],
+            'backslash' => ['\\', 'C\\D病院'],
+            'full-width percent (normalized to %)' => ['％', '100%クリニック'],
+            'full-width underscore (normalized to _)' => ['＿', 'A_B病院'],
+        ];
+    }
+
+    #[DataProvider('likeMetacharacterProvider')]
+    public function test_search_treats_like_metacharacters_literally(string $term, string $matchingName): void
+    {
+        $matching = MedicalFacility::factory()->create(['name' => $matchingName, 'address' => '札幌市中央区']);
+        MedicalFacility::factory()->create(['name' => '山田病院', 'address' => '札幌市北区']);
+
+        $response = $this->getJson('/api/v1/medical-facilities?q='.urlencode($term));
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $matching->id);
+    }
+
+    public function test_underscore_does_not_match_an_arbitrary_single_character(): void
+    {
+        MedicalFacility::factory()->create(['name' => 'AXB病院', 'address' => '札幌市中央区']);
+
+        $response = $this->getJson('/api/v1/medical-facilities?q='.urlencode('A_B'));
+
+        $response->assertOk();
+        $response->assertJsonCount(0, 'data');
     }
 
     public function test_returns_422_when_institution_type_is_not_a_valid_enum_value(): void
