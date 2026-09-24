@@ -164,7 +164,7 @@ class ImportRhbFacilityListJob implements ShouldQueue
 
     private function resolveExpander(): BundleExpanderInterface
     {
-        foreach (config('rhb.bureaus') as $meta) {
+        foreach (config()->array('rhb.bureaus') as $meta) {
             if ($meta['bureau'] === $this->bureau) {
                 return app($meta['expander']);
             }

@@ -45,7 +45,7 @@ class RhbDatasetDownload extends Model
      *   grouping by filename would treat every past month as current and
      *   re-import it over the latest data.
      *
-     * @return Collection<int, self>
+     * @return Collection<int, static>
      */
     public static function allFor(RhbBureau $bureau, RhbCategory $category): Collection
     {

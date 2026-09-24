@@ -1,0 +1,13 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    paths:
+        - app/
+
+    level: 6
+
+    # Read the array returned by each model's casts() method instead of its
+    # declared `array<string, string>` return type; otherwise enum/date
+    # casts are ignored and every cast property is typed as its raw column.
+    parseModelCastsMethod: true

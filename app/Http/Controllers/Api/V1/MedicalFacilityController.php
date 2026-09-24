@@ -91,7 +91,7 @@ class MedicalFacilityController extends Controller
     {
         return [
             'notice' => '本APIのデータは、各地方厚生局が公開する「保険医療機関・保険薬局の指定一覧」を加工して作成しています。',
-            'sources' => collect(config('rhb.bureaus'))
+            'sources' => collect(config()->array('rhb.bureaus'))
                 ->map(fn (array $bureau) => [
                     'bureau' => $bureau['label'],
                     'url' => $bureau['index_url'],

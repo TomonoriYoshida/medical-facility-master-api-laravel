@@ -147,7 +147,10 @@ vendor/bin/sail artisan rhb:import --wait           # 取込（完了まで待�
 ```bash
 vendor/bin/sail artisan test --compact
 vendor/bin/sail bin pint          # コード整形
+vendor/bin/sail php vendor/bin/phpstan analyse --memory-limit=1G   # 静的解析（Larastan、設定は phpstan.neon）
 ```
+
+プルリクエストでは、GitHub Actions がこの3つ（Pint / PHPStan / PHPUnit）を実行します。
 
 局ごとのリゾルバは、実際の一覧ページの HTML をフィクスチャ（`tests/Fixtures/`）にしてテストしています。
 
