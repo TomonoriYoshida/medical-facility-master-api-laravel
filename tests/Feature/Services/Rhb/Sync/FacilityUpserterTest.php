@@ -7,10 +7,12 @@ use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityEventType;
 use App\Enums\MedicalFacilityStatus;
 use App\Enums\RhbBureau;
+use App\Models\MedicalFacility;
 use App\Models\RhbDatasetDownload;
 use App\Services\Rhb\Sync\FacilityUpserter;
 use App\Services\Rhb\Sync\FacilityUpsertOutcome;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class FacilityUpserterTest extends TestCase
@@ -60,6 +62,42 @@ class FacilityUpserterTest extends TestCase
         $this->assertSame(FacilityUpsertOutcome::Unchanged, $result['outcome']);
         $this->assertSame($download2->id, $result['facility']->fresh()->last_seen_rhb_dataset_download_id);
         $this->assertSame(1, $result['facility']->events()->count());
+    }
+
+    public function test_reimporting_an_unchanged_facility_issues_no_update_even_when_mysql_reorders_json_keys(): void
+    {
+        // MySQL stores {"療養":…,"一般":…} as {"一般":…,"療養":…}.
+        $download = RhbDatasetDownload::factory()->create();
+        $mapped = $this->mappedAttributes([
+            'facility_code' => '0000010',
+            'bed_counts' => ['療養' => 206, '一般' => 231],
+            'designation_history' => [['reason' => '新規', 'date' => '2023-03-01']],
+        ]);
+        (new FacilityUpserter)->upsert($mapped, $download);
+
+        DB::enableQueryLog();
+        $result = (new FacilityUpserter)->upsert($mapped, $download);
+
+        $this->assertSame(FacilityUpsertOutcome::Unchanged, $result['outcome']);
+        $this->assertSame([], array_filter(
+            DB::getQueryLog(),
+            fn (array $query): bool => str_starts_with($query['query'], 'update'),
+        ));
+    }
+
+    public function test_an_unchanged_facility_seen_in_a_new_download_keeps_its_updated_at(): void
+    {
+        $download1 = RhbDatasetDownload::factory()->create();
+        $mapped = $this->mappedAttributes(['facility_code' => '0000011']);
+        $facility = (new FacilityUpserter)->upsert($mapped, $download1)['facility'];
+        MedicalFacility::whereKey($facility->id)->toBase()->update(['updated_at' => '2026-01-01 00:00:00']);
+
+        $download2 = RhbDatasetDownload::factory()->create();
+        (new FacilityUpserter)->upsert($mapped, $download2);
+
+        $facility->refresh();
+        $this->assertSame($download2->id, $facility->last_seen_rhb_dataset_download_id);
+        $this->assertSame('2026-01-01 00:00:00', $facility->updated_at->toDateTimeString());
     }
 
     public function test_a_changed_active_facility_updates_and_records_an_updated_event_with_only_the_changed_fields(): void
