@@ -27,6 +27,9 @@ services:
             - mailpit
     mysql:
         image: 'mysql:8.4'
+        # medical_facilities alone exceeds MySQL's default 128MB buffer pool,
+        # which forces every search full scan to hit disk (~1-2s vs ~0.1-0.25s).
+        command: '--innodb-buffer-pool-size=512M'
         ports:
             - '${FORWARD_DB_PORT:-3306}:3306'
         environment:
