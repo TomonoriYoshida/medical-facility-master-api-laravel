@@ -134,6 +134,7 @@ vendor/bin/sail artisan rhb:import --wait           # 取込（完了まで待�
 ```
 
 - `--bureau=hokkaido` のように局を指定すると、その局だけを処理できます（局キーは [config/rhb.php](config/rhb.php) を参照）。
+- このリポジトリをもとに自分の環境で運用する場合は、`rhb:download` が送る User-Agent（[DownloadRhbDatasets.php](app/Console/Commands/DownloadRhbDatasets.php) の `USER_AGENT`）を、自分の連絡先に書き換えてください。各局のサーバーからは、このリポジトリからのアクセスとして見えるためです。
 - 全局の初回取込には時間がかかります（目安: 約230行/秒）。
 
 起動後は次の URL で確認できます。
@@ -160,3 +161,11 @@ vendor/bin/sail php vendor/bin/phpstan analyse --memory-limit=1G   # 静的解�
 元データは[公共データ利用規約（第1.0版）](https://www.digital.go.jp/resources/open_data/public_data_license_v1.0)（PDL1.0）に準拠して公開されており、
 利用にあたっては出典の記載と、加工した旨の記載が必要です。本APIはすべてのレスポンスにこれらを含めています。
 詳細は [DATABASE.md の「データの出典・利用条件」](DATABASE.md#データの出典利用条件) を参照してください。
+
+## ライセンス
+
+ソースコードは [MIT License](LICENSE) で公開しています。商用・非商用を問わず、自由に利用・改変・再配布できます。
+
+このリポジトリをもとに開発される場合は、README などに「[Tomonori Yoshida のリポジトリ](https://github.com/TomonoriYoshida/medical-facility-master-api-laravel)をベースに開発」とクレジットを記載していただけると嬉しいです（ライセンス上の義務ではなく、お願いです）。
+
+API が返すデータの利用条件は、ソースコードのライセンスとは別です。前述の「データの出典・利用条件」を参照してください。
