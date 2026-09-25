@@ -1,9 +1,9 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "tomonoriyoshida/medical-facility-master-api-laravel",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "description": "REST API for Japan's insured medical facilities, built from the regional health bureaus' open data.",
+    "keywords": ["laravel", "api", "medical-facility", "open-data"],
     "license": "MIT",
     "require": {
         "php": "^8.3",
