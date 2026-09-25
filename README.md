@@ -169,3 +169,7 @@ vendor/bin/sail php vendor/bin/phpstan analyse --memory-limit=1G   # 静的解�
 このリポジトリをもとに開発される場合は、README などに「[Tomonori Yoshida のリポジトリ](https://github.com/TomonoriYoshida/medical-facility-master-api-laravel)をベースに開発」とクレジットを記載していただけると嬉しいです（ライセンス上の義務ではなく、お願いです）。
 
 API が返すデータの利用条件は、ソースコードのライセンスとは別です。前述の「データの出典・利用条件」を参照してください。
+
+### サードパーティのデータ
+
+異体字の対応表 [database/seeders/data/itaiji-mapping.csv](database/seeders/data/itaiji-mapping.csv) は、Unicode コンソーシアムの [Unihan データベース](https://www.unicode.org/charts/unihan.html)（`kJapaneseOldVariant` / `kJapaneseNewVariant`）から抽出したデータを含みます。このデータは [Unicode License v3](database/seeders/data/LICENSE-Unicode.txt) に従います。

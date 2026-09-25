@@ -25,7 +25,7 @@ class InsuredFacilityRecordMapperTest extends TestCase
                     3 => '〒005－0813札幌市南区川沿１３条２丁目１番３８号',
                     4 => '011-571-5670',
                     5 => '医療法人　愛全会',
-                    6 => '松原　泉',
+                    6 => '山田　太郎',
                     7 => '昭47. 3. 1',
                     8 => "療養\u{3000}\u{3000} 206",
                     9 => '病院',
@@ -47,7 +47,7 @@ class InsuredFacilityRecordMapperTest extends TestCase
         $this->assertSame('札幌市南区川沿１３条２丁目１番３８号', $mapped['address']);
         $this->assertSame('011-571-5670', $mapped['phone_number']);
         $this->assertSame('医療法人　愛全会', $mapped['founder_name']);
-        $this->assertSame('松原　泉', $mapped['administrator_name']);
+        $this->assertSame('山田　太郎', $mapped['administrator_name']);
         $this->assertSame('1972-03-01', $mapped['designated_on']);
         $this->assertSame([['reason' => '新規', 'date' => '2023-03-01']], $mapped['designation_history']);
         $this->assertSame(['療養' => 206, '一般' => 231], $mapped['bed_counts']);
