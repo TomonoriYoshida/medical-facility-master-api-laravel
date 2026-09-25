@@ -109,7 +109,7 @@ WHERE e.event_type = 1 -- Created
 | `source` | string | - | `kJapaneseNewVariant` / `kJapaneseOldVariant`（Unicodeコンソーシアムの Unihanデータベース由来）/ `manual`（個別に検証して手動追加したもの） |
 | `created_at` / `updated_at` | datetime | - | |
 
-368件（自動抽出364件＋手動補完4件）を`KanjiVariantSeeder`でシードする。データの選定経緯:
+368件（自動抽出364件＋手動補完4件）を`KanjiVariantSeeder`でシードする。Unihan由来のデータは[Unicode License v3](database/seeders/data/LICENSE-Unicode.txt)に従うため、CSVを配布する際はこのライセンス文を同梱すること。データの選定経緯:
 
 - 当初検討した「住基統一文字コード 正字対応表」（政府PDF）は、私用領域(PUA)の古いレガシーコードを実在のUnicode文字に対応付けるための表であり、「髙⇄高」のような既存のUnicode文字同士の異体字統合には使えないと判明したため採用しなかった
 - Unicodeコンソーシアム公式のUnihanデータベース（`Unihan_Variants.txt`）の`kJapaneseOldVariant`/`kJapaneseNewVariant`フィールド（日本語の旧字体→新字体に特化、364件）を自動抽出のコアとして採用
