@@ -33,8 +33,6 @@ class MedicalFacilityResource extends JsonResource
             'postal_code' => $this->postal_code,
             'address' => $this->address,
             'phone_number' => $this->phone_number,
-            'founder_name' => $this->founder_name,
-            'administrator_name' => $this->administrator_name,
             'designated_on' => $this->designated_on?->toDateString(),
             'designation_history' => $this->designation_history,
             'bed_counts' => $this->bed_counts,

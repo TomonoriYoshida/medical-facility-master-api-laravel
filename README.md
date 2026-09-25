@@ -75,14 +75,19 @@ GET /api/v1/medical-facilities?q=札幌&institution_type=1&per_page=1
   "meta": {
     "current_page": 1,
     "total": 196,
-    "attribution": { "notice": "本APIのデータは、各地方厚生局が公開する…", "sources": [ /* 8局の出典URL */ ] }
+    "attribution": {
+      "notice": "本APIのデータは、各地方厚生局が公開する…を加工して作成しています。",
+      "license": { "name": "公共データ利用規約（第1.0版）", "url": "https://www.digital.go.jp/…" },
+      "disclaimer": "データの正確性・完全性は保証しません。…",
+      "sources": [ /* 8局の出典URL */ ]
+    }
   }
 }
 ```
 
 - **仕様書**: 起動後に `/docs/api`（対話的に試せるUI）と `/docs/api.json`（OpenAPI）で確認できます。
 - **レート制限**: IPアドレスごとに1分あたり60回です（`API_RATE_LIMIT_PER_MINUTE` で変更可）。
-- **出典表示**: すべてのレスポンスの `meta.attribution` に、データの出典を含めています（後述の利用条件に対応）。
+- **出典表示**: すべてのレスポンスの `meta.attribution` に、データの出典・利用条件（PDL1.0）・免責を含めています（後述の「データの出典・利用条件」を参照）。
 
 ## データの取得・更新の仕組み
 
@@ -158,8 +163,18 @@ vendor/bin/sail php vendor/bin/phpstan analyse --memory-limit=1G   # 静的解�
 ## データの出典・利用条件
 
 本APIのデータは、各地方厚生局が公開する「保険医療機関・保険薬局の指定一覧」を加工して作成しています。
-元データは[公共データ利用規約（第1.0版）](https://www.digital.go.jp/resources/open_data/public_data_license_v1.0)（PDL1.0）に準拠して公開されており、
-利用にあたっては出典の記載と、加工した旨の記載が必要です。本APIはすべてのレスポンスにこれらを含めています。
+元データは[公共データ利用規約（第1.0版）](https://www.digital.go.jp/resources/open_data/public_data_license_v1.0)（PDL1.0）に準拠して公開されています。
+**本APIが返すデータも、同じくPDL1.0に準拠して提供します。** 商用・非商用を問わず利用できますが、次の点を守ってください。
+
+1. **出典を記載する**: 例）出典：各地方厚生局「保険医療機関・保険薬局の指定一覧」
+2. **加工したことを記載する**: 例）各地方厚生局「保険医療機関・保険薬局の指定一覧」を加工して作成
+3. **国（厚生労働省・地方厚生局）が作成したかのような形で公表・利用しない**
+
+各局の出典URLは、すべてのレスポンスの `meta.attribution.sources` に含めています。
+
+- **免責**: データの正確性・完全性は保証しません。最新かつ正確な情報は、各地方厚生局の公表資料を確認してください。
+- **個人名は提供しません**: 元データの開設者名・管理者名は個人名を含むため、APIでは返しません。
+
 詳細は [DATABASE.md の「データの出典・利用条件」](DATABASE.md#データの出典利用条件) を参照してください。
 
 ## ライセンス

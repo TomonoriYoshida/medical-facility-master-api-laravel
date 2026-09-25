@@ -38,6 +38,10 @@ class ShowMedicalFacilityControllerTest extends TestCase
         ]);
         $response->assertJsonMissingPath('data.bureau_code');
         $response->assertJsonMissingPath('data.latitude');
+        // Personal names (administrators are always individuals, founders
+        // of clinics usually are) stay in the database but are not served.
+        $response->assertJsonMissingPath('data.founder_name');
+        $response->assertJsonMissingPath('data.administrator_name');
         $response->assertJsonMissingPath('data.longitude');
     }
 
@@ -49,6 +53,7 @@ class ShowMedicalFacilityControllerTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonCount(8, 'meta.attribution.sources');
+        $response->assertJsonPath('meta.attribution.license.name', '公共データ利用規約（第1.0版）');
     }
 
     public function test_returns_404_when_facility_does_not_exist(): void
