@@ -93,6 +93,9 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $response->assertJsonPath('meta.attribution.notice', '本APIのデータは、各地方厚生局が公開する「保険医療機関・保険薬局の指定一覧」を加工して作成しています。');
         $response->assertJsonCount(8, 'meta.attribution.sources');
         $response->assertJsonPath('meta.attribution.sources.0.bureau', '北海道厚生局');
+        $response->assertJsonPath('meta.attribution.license.name', '公共データ利用規約（第1.0版）');
+        $response->assertJsonPath('meta.attribution.license.url', 'https://www.digital.go.jp/resources/open_data/public_data_license_v1.0');
+        $response->assertJsonPath('meta.attribution.disclaimer', 'データの正確性・完全性は保証しません。最新かつ正確な情報は、各地方厚生局の公表資料を確認してください。');
     }
 
     public function test_filters_by_prefecture_code(): void
