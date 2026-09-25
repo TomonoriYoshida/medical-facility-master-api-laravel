@@ -27,9 +27,13 @@ services:
             - mailpit
     mysql:
         image: 'mysql:8.4'
-        # medical_facilities alone exceeds MySQL's default 128MB buffer pool,
-        # which forces every search full scan to hit disk (~1-2s vs ~0.1-0.25s).
-        command: '--innodb-buffer-pool-size=512M'
+        # --innodb-buffer-pool-size: medical_facilities alone exceeds MySQL's
+        # default 128MB buffer pool, which forces every search full scan to
+        # hit disk (~1-2s vs ~0.1-0.25s).
+        # --skip-log-bin: MySQL 8 keeps binary logs for 30 days by default;
+        # a full import wrote ~1.2GB of them, and local development uses
+        # neither replication nor point-in-time recovery.
+        command: '--innodb-buffer-pool-size=512M --skip-log-bin'
         ports:
             - '${FORWARD_DB_PORT:-3306}:3306'
         environment:
