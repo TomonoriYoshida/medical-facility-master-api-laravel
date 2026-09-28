@@ -1,0 +1,86 @@
+# Production stack for a single persistent server: see DEPLOY.md.
+# Run every command with `docker compose -f compose.production.yaml ...`.
+#
+# app, worker and scheduler run the same image. They share the
+# storage-app volume because rhb:download (run by the scheduler) saves each
+# dataset under storage/app and records that path, and the queued import job
+# (run by the worker) reads the file back from the same path.
+
+x-app: &app
+    build: .
+    image: medical-facility-master-api:latest
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+        - 'storage-app:/app/storage/app'
+    depends_on:
+        mysql:
+            condition: service_healthy
+    logging: &logging
+        driver: json-file
+        options:
+            max-size: '10m'
+            max-file: '5'
+
+services:
+    app:
+        <<: *app
+        environment:
+            # A hostname (e.g. 203-0-113-1.sslip.io) makes Caddy serve HTTPS
+            # with an automatic Let's Encrypt certificate; ":80" serves plain
+            # HTTP only.
+            SERVER_NAME: '${SERVER_NAME:?SERVER_NAME must be set in .env}'
+        ports:
+            - '80:80'
+            - '443:443'
+            - '443:443/udp'
+        volumes:
+            - 'storage-app:/app/storage/app'
+            - 'caddy-data:/data/caddy'
+            - 'caddy-config:/config/caddy'
+
+    worker:
+        <<: *app
+        command: ['php', 'artisan', 'queue:work', '--sleep=3', '--max-time=3600']
+        # queue:work finishes the job in progress before exiting on SIGTERM;
+        # ImportRhbFacilityListJob may run for up to its 600s timeout.
+        stop_grace_period: 10m
+        # The image's healthcheck probes Caddy, which only the app runs.
+        healthcheck:
+            disable: true
+
+    scheduler:
+        <<: *app
+        command: ['php', 'artisan', 'schedule:work']
+        healthcheck:
+            disable: true
+
+    mysql:
+        image: 'mysql:8.4'
+        restart: unless-stopped
+        # --innodb-buffer-pool-size: medical_facilities alone exceeds MySQL's
+        # default 128MB buffer pool, which forces every search full scan to
+        # hit disk (~1-2s vs ~0.1-0.25s).
+        # --skip-log-bin: binary logs are only needed for replication and
+        # point-in-time recovery; a full import writes ~1.2GB of them.
+        # Backups are daily mysqldump files instead (DEPLOY.md).
+        command: '--innodb-buffer-pool-size=${MYSQL_INNODB_BUFFER_POOL_SIZE:-512M} --skip-log-bin'
+        environment:
+            MYSQL_ROOT_PASSWORD: '${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD must be set in .env}'
+            MYSQL_DATABASE: '${DB_DATABASE}'
+            MYSQL_USER: '${DB_USERNAME}'
+            MYSQL_PASSWORD: '${DB_PASSWORD:?DB_PASSWORD must be set in .env}'
+        volumes:
+            - 'mysql-data:/var/lib/mysql'
+        healthcheck:
+            test: ['CMD-SHELL', 'mysqladmin ping -h localhost -u root -p"$$MYSQL_ROOT_PASSWORD" --silent']
+            interval: 10s
+            retries: 10
+            timeout: 5s
+        logging: *logging
+
+volumes:
+    storage-app:
+    caddy-data:
+    caddy-config:
+    mysql-data:
