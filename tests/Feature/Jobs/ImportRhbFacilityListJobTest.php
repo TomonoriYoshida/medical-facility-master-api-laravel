@@ -174,6 +174,36 @@ class ImportRhbFacilityListJobTest extends TestCase
         $this->assertSame(MedicalFacilityEventOrigin::Baseline, $event->origin);
     }
 
+    public function test_rows_of_a_prefecture_outside_the_scope_are_not_imported(): void
+    {
+        config(['rhb.scope.prefectures' => ['02']]);
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+        ]);
+
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        $this->assertDatabaseCount('medical_facilities', 0);
+    }
+
+    public function test_a_prefecture_added_to_the_scope_later_starts_as_baseline_not_as_openings(): void
+    {
+        // The bureau's earlier publication was already processed while this
+        // prefecture was out of scope, so none of its facilities exist yet.
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+        ], filename: 'r0805.xlsx', publishedOn: '2026-05-01')->update(['imported_at' => now()]);
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+        ], filename: 'r0806.xlsx', publishedOn: '2026-06-01');
+
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        $event = MedicalFacilityEvent::sole();
+        $this->assertSame(MedicalFacilityEventType::Created, $event->event_type);
+        $this->assertSame(MedicalFacilityEventOrigin::Baseline, $event->origin);
+    }
+
     public function test_changes_between_publications_are_recorded_as_detected(): void
     {
         $this->seedDownload(RhbCategory::Medical, [

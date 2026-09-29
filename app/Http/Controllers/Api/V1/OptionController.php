@@ -8,7 +8,9 @@ use App\Enums\MedicalFacilityEventType;
 use App\Enums\MedicalFacilityStatus;
 use App\Enums\Prefecture;
 use App\Enums\RhbBureau;
+use App\Enums\RhbCategory;
 use App\Http\Controllers\Controller;
+use App\Services\Rhb\RhbScope;
 use Illuminate\Http\JsonResponse;
 
 class OptionController extends Controller
@@ -24,28 +26,32 @@ class OptionController extends Controller
      * 絞り込みの選択肢
      *
      * 一覧APIの絞り込み条件に使える値と、その日本語名を返します。`code` はそのまま各パラメータに渡せます。
+     * 都道府県・地方厚生局・施設種別は、このAPIが取り扱う範囲のものだけを返します。
      * `designation_reasons` は元データでは自由記述のため、代表的な値のみです。
      */
-    public function __invoke(): JsonResponse
+    public function __invoke(RhbScope $scope): JsonResponse
     {
         $bureauByPrefectureCode = [];
 
-        foreach (config()->array('rhb.bureaus') as $meta) {
+        foreach ($scope->bureaus() as $meta) {
             foreach ($meta['prefecture_codes'] as $prefectureCode) {
                 $bureauByPrefectureCode[$prefectureCode] = $meta['bureau'];
             }
         }
+
+        // Pharmacy lists carry no departments.
+        $hasDepartments = $scope->includesCategory(RhbCategory::Medical) || $scope->includesCategory(RhbCategory::Dental);
 
         return response()->json([
             'data' => [
                 'prefectures' => array_map(fn (Prefecture $prefecture): array => [
                     ...$this->codeAndLabel($prefecture),
                     'bureau' => $this->codeAndLabel($bureauByPrefectureCode[$prefecture->value]),
-                ], Prefecture::cases()),
-                'institution_types' => array_map($this->codeAndLabel(...), InstitutionType::cases()),
+                ], $scope->prefectures()),
+                'institution_types' => array_map($this->codeAndLabel(...), $scope->institutionTypes()),
                 'statuses' => array_map($this->codeAndLabel(...), MedicalFacilityStatus::cases()),
-                'bureaus' => array_map($this->codeAndLabel(...), RhbBureau::cases()),
-                'department_categories' => array_map($this->codeAndLabel(...), DepartmentBaseCategory::cases()),
+                'bureaus' => array_map(fn (array $meta): array => $this->codeAndLabel($meta['bureau']), array_values($scope->bureaus())),
+                'department_categories' => $hasDepartments ? array_map($this->codeAndLabel(...), DepartmentBaseCategory::cases()) : [],
                 'event_types' => array_map($this->codeAndLabel(...), MedicalFacilityEventType::cases()),
                 'designation_reasons' => self::COMMON_DESIGNATION_REASONS,
             ],

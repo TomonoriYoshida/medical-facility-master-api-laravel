@@ -10,6 +10,12 @@ use Carbon\CarbonImmutable;
  * fetched by DownloadRhbDatasets. $url is already absolute (a
  * BureauLinkResolver is responsible for resolving any relative href
  * against its bureau's base_url).
+ *
+ * $prefectureCode is set only when the link's file covers that single
+ * prefecture (Kyushu publishes one zip per prefecture), which lets an
+ * out-of-scope prefecture's file be skipped without downloading it. Null
+ * means the file bundles the bureau's prefectures (or the prefecture could
+ * not be told from the page), so it is always downloaded.
  */
 final readonly class ResolvedRhbDatasetLink
 {
@@ -18,5 +24,6 @@ final readonly class ResolvedRhbDatasetLink
         public string $url,
         public string $filename,
         public CarbonImmutable $publishedOn,
+        public ?string $prefectureCode = null,
     ) {}
 }

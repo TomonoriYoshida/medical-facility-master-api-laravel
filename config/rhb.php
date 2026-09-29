@@ -111,6 +111,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Scope
+    |--------------------------------------------------------------------------
+    |
+    | Limits what this installation crawls and stores (App\Services\Rhb\
+    | RhbScope). Comma-separated; empty means everything. Prefectures are JIS
+    | codes ("02,39"); categories are medical, dental and/or pharmacy.
+    | Narrowing the scope leaves already-imported data in place.
+    |
+    */
+
+    'scope' => [
+        'prefectures' => array_values(array_filter(array_map('trim', explode(',', (string) env('RHB_PREFECTURES', ''))))),
+        'categories' => array_values(array_filter(array_map('trim', explode(',', (string) env('RHB_CATEGORIES', ''))))),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Monitoring
     |--------------------------------------------------------------------------
     |

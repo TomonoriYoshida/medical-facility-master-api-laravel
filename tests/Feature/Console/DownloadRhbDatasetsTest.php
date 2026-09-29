@@ -188,6 +188,54 @@ class DownloadRhbDatasetsTest extends TestCase
         $this->assertDatabaseCount('rhb_dataset_downloads', 2);
     }
 
+    public function test_only_bureaus_covering_the_scoped_prefectures_are_crawled(): void
+    {
+        Storage::fake('local');
+        $this->fakeHttp($this->fixture('rhb-hokkaido-index.html'));
+        config(['rhb.scope.prefectures' => ['02', '39']]);
+
+        $this->artisan('rhb:download')->assertExitCode(0);
+
+        $this->assertEqualsCanonicalizing(
+            [RhbBureau::Tohoku, RhbBureau::Shikoku],
+            RhbDatasetDownload::query()->distinct()->pluck('bureau_code')->all(),
+        );
+        Http::assertNotSent(fn (Request $request): bool => $request->url() === self::HOKKAIDO_INDEX_URL);
+    }
+
+    public function test_only_the_scoped_categories_are_downloaded(): void
+    {
+        Storage::fake('local');
+        $this->fakeHttp($this->fixture('rhb-hokkaido-index.html'));
+        config(['rhb.scope.categories' => ['pharmacy']]);
+
+        $this->artisan('rhb:download', ['--bureau' => ['hokkaido']])->assertExitCode(0);
+
+        $this->assertSame([RhbCategory::Pharmacy], RhbDatasetDownload::query()->distinct()->pluck('category')->all());
+    }
+
+    public function test_a_kyushu_zip_for_an_out_of_scope_prefecture_is_not_downloaded(): void
+    {
+        Storage::fake('local');
+        $this->fakeHttp($this->fixture('rhb-hokkaido-index.html'));
+        config(['rhb.scope.prefectures' => ['41']]);
+
+        $this->artisan('rhb:download')->assertExitCode(0);
+
+        $this->assertSame(['000500311.zip'], RhbDatasetDownload::query()->distinct()->pluck('filename')->all());
+        $this->assertSame(['41'], RhbDatasetDownload::query()->firstOrFail()->prefecture_codes);
+        Http::assertNotSent(fn (Request $request): bool => str_ends_with($request->url(), '000500310.zip'));
+    }
+
+    public function test_a_bureau_outside_the_scope_is_rejected(): void
+    {
+        config(['rhb.scope.prefectures' => ['02']]);
+
+        $this->artisan('rhb:download', ['--bureau' => ['hokkaido']])
+            ->expectsOutputToContain('対象範囲（RHB_PREFECTURES）外の局です: hokkaido')
+            ->assertExitCode(1);
+    }
+
     public function test_without_a_bureau_filter_it_downloads_from_every_configured_bureau(): void
     {
         Storage::fake('local');

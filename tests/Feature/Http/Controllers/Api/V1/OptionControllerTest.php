@@ -37,6 +37,29 @@ class OptionControllerTest extends TestCase
         $response->assertJsonPath('data.designation_reasons.0', '新規');
     }
 
+    public function test_only_options_within_the_scope_are_returned(): void
+    {
+        config(['rhb.scope.prefectures' => ['02', '39'], 'rhb.scope.categories' => ['pharmacy']]);
+
+        $response = $this->getJson('/api/v1/options');
+
+        $response->assertOk();
+        $this->assertSame(['02', '39'], $response->json('data.prefectures.*.code'));
+        $this->assertSame([2, 7], $response->json('data.bureaus.*.code'));
+        $response->assertJsonPath('data.institution_types', [['code' => 4, 'label' => '薬局']]);
+        $response->assertJsonPath('data.department_categories', []);
+    }
+
+    public function test_attribution_lists_only_the_bureaus_in_scope(): void
+    {
+        config(['rhb.scope.prefectures' => ['02', '39']]);
+
+        $response = $this->getJson('/api/v1/medical-facilities');
+
+        $response->assertOk();
+        $this->assertSame(['東北厚生局', '四国厚生局'], $response->json('meta.attribution.sources.*.bureau'));
+    }
+
     public function test_every_prefecture_belongs_to_exactly_one_bureau(): void
     {
         $prefectures = $this->getJson('/api/v1/options')->json('data.prefectures');

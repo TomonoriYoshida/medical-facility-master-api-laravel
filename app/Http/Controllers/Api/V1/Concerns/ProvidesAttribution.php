@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1\Concerns;
 
+use App\Services\Rhb\RhbScope;
+
 trait ProvidesAttribution
 {
     /**
@@ -23,7 +25,8 @@ trait ProvidesAttribution
                 'url' => 'https://www.digital.go.jp/resources/open_data/public_data_license_v1.0',
             ],
             'disclaimer' => 'データの正確性・完全性は保証しません。最新かつ正確な情報は、各地方厚生局の公表資料を確認してください。',
-            'sources' => collect(config()->array('rhb.bureaus'))
+            // The bureaus this installation actually draws from (RhbScope).
+            'sources' => collect(app(RhbScope::class)->bureaus())
                 ->map(fn (array $bureau) => [
                     'bureau' => $bureau['label'],
                     'url' => $bureau['index_url'],

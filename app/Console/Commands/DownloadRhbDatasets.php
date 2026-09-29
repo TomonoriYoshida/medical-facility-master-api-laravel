@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Enums\RhbCategory;
 use App\Models\RhbDatasetDownload;
 use App\Services\Rhb\Download\ResolvedRhbDatasetLink;
+use App\Services\Rhb\RhbScope;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -17,24 +18,35 @@ use RuntimeException;
 use Throwable;
 
 #[Signature('rhb:download
-    {--bureau=* : 対象の局キーを絞り込む（config/rhb.phpのキー、指定なしは全局、繰り返し指定可）}')]
+    {--bureau=* : 対象の局キーを絞り込む（config/rhb.phpのキー、指定なしは対象範囲内の全局、繰り返し指定可）}')]
 #[Description('Download the latest regional health bureau (地方厚生局) medical institution lists when a newer version is available')]
 class DownloadRhbDatasets extends Command
 {
     private const string USER_AGENT = 'MedicalFacilityMasterAPI/1.0 (+https://github.com/TomonoriYoshida/medical-facility-master-api-laravel)';
 
-    public function handle(): int
+    private RhbScope $scope;
+
+    public function handle(RhbScope $scope): int
     {
-        $bureaus = config()->array('rhb.bureaus');
+        $this->scope = $scope;
+        $bureaus = $scope->bureaus();
 
         /** @var list<string> $requested */
         $requested = $this->option('bureau');
 
         if ($requested !== []) {
-            $unknown = array_diff($requested, array_keys($bureaus));
+            $unknown = array_diff($requested, array_keys(config()->array('rhb.bureaus')));
 
             if ($unknown !== []) {
                 $this->components->error('未知の局キーです: '.implode(', ', $unknown));
+
+                return Command::FAILURE;
+            }
+
+            $outOfScope = array_diff($requested, array_keys($bureaus));
+
+            if ($outOfScope !== []) {
+                $this->components->error('対象範囲（RHB_PREFECTURES）外の局です: '.implode(', ', $outOfScope));
 
                 return Command::FAILURE;
             }
@@ -90,12 +102,15 @@ class DownloadRhbDatasets extends Command
         // updating.
         $resolvedCategories = array_map(fn (ResolvedRhbDatasetLink $link): RhbCategory => $link->category, $links);
 
-        foreach (RhbCategory::cases() as $category) {
+        foreach ($this->scope->categories() as $category) {
             if (! in_array($category, $resolvedCategories, true)) {
                 $this->components->error("{$meta['label']}: {$category->name} のリンクが見つかりません");
                 $hasFailure = true;
             }
         }
+
+        $links = array_filter($links, fn (ResolvedRhbDatasetLink $link): bool => $this->scope->includesCategory($link->category)
+            && ($link->prefectureCode === null || $this->scope->includesPrefecture($link->prefectureCode)));
 
         foreach ($links as $link) {
             if (! $this->processLink($bureauKey, $meta, $link)) {
@@ -157,15 +172,14 @@ class DownloadRhbDatasets extends Command
             throw new RuntimeException('レスポンスがExcel(xlsx)形式ではありません');
         }
 
-        $categoryKey = strtolower($link->category->name);
-        $localPath = "rhb/{$bureauKey}/{$categoryKey}/{$link->filename}";
+        $localPath = "rhb/{$bureauKey}/{$link->category->key()}/{$link->filename}";
 
         Storage::disk('local')->put($localPath, $body);
 
         RhbDatasetDownload::create([
             'bureau_code' => $meta['bureau'],
             'category' => $link->category,
-            'prefecture_codes' => $meta['prefecture_codes'],
+            'prefecture_codes' => $link->prefectureCode !== null ? [$link->prefectureCode] : $meta['prefecture_codes'],
             'filename' => $link->filename,
             'source_url' => $link->url,
             'local_path' => $localPath,

@@ -6,9 +6,11 @@ use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityEventOrigin;
 use App\Enums\RhbBureau;
 use App\Enums\RhbCategory;
+use App\Models\MedicalFacility;
 use App\Models\RhbDatasetDownload;
 use App\Services\Rhb\Download\BundleExpanderInterface;
 use App\Services\Rhb\Import\InsuredFacilityDatasetRowSource;
+use App\Services\Rhb\RhbScope;
 use App\Services\Rhb\Sync\FacilityClosureReconciler;
 use App\Services\Rhb\Sync\FacilityUpserter;
 use Illuminate\Bus\Batchable;
@@ -61,6 +63,7 @@ class ImportRhbFacilityListJob implements ShouldQueue
         InsuredFacilityDatasetRowSource $rowSource,
         FacilityUpserter $upserter,
         FacilityClosureReconciler $reconciler,
+        RhbScope $scope,
     ): void {
         if ($this->batch()?->cancelled()) {
             return;
@@ -88,17 +91,21 @@ class ImportRhbFacilityListJob implements ShouldQueue
 
         $expander = $this->resolveExpander();
 
-        // Decided up front, before this run sets imported_at below.
-        /** @var array<int, MedicalFacilityEventOrigin> $origins */
-        $origins = [];
-
-        foreach ($downloads as $download) {
-            $origins[$download->id] = $this->eventOriginFor($download);
-        }
+        // Taken before any row is written: a prefecture is being tracked for
+        // the first time (its whole list is the baseline, not openings) only
+        // if none of its facilities of this category existed beforehand --
+        // true on the very first import, and also for a prefecture added to
+        // RHB_PREFECTURES later, whose bureau was already being imported.
+        $trackedPrefectureCodes = MedicalFacility::query()
+            ->where('bureau_code', $this->bureau)
+            ->whereIn('institution_type', $this->category->institutionTypes())
+            ->distinct()
+            ->pluck('prefecture_code')
+            ->all();
 
         $counts = array_fill_keys(['created', 'reopened', 'updated', 'unchanged', 'skipped'], 0);
 
-        /** @var array<string, array{institutionType: InstitutionType, prefectureCode: string, download: RhbDatasetDownload}> $reconcileTargets */
+        /** @var array<string, array{institutionType: InstitutionType, prefectureCode: string, download: RhbDatasetDownload, origin: MedicalFacilityEventOrigin}> $reconcileTargets */
         $reconcileTargets = [];
 
         // A row whose upsert failed is still present in the dataset, but
@@ -109,17 +116,26 @@ class ImportRhbFacilityListJob implements ShouldQueue
 
         foreach ($downloads as $download) {
             foreach ($expander->expand($download) as $unit) {
+                // Bureaus bundle every prefecture into one file; only the
+                // in-scope ones are stored (or reconciled).
+                if (! $scope->includesPrefecture($unit->prefectureCode)) {
+                    continue;
+                }
+
+                $origin = $this->eventOriginFor($download, in_array($unit->prefectureCode, $trackedPrefectureCodes, true));
+
                 foreach ($rowSource->rows($unit->xlsxPath, $unit->category, $unit->bureau, $unit->prefectureCode, $unit->sheetName) as $mapped) {
                     $key = "{$mapped['institution_type']->value}:{$unit->prefectureCode}";
 
                     try {
-                        $result = $upserter->upsert($mapped, $download, $origins[$download->id]);
+                        $result = $upserter->upsert($mapped, $download, $origin);
                         $counts[strtolower($result['outcome']->name)]++;
 
                         $reconcileTargets[$key] = [
                             'institutionType' => $mapped['institution_type'],
                             'prefectureCode' => $unit->prefectureCode,
                             'download' => $download,
+                            'origin' => $origin,
                         ];
                     } catch (Throwable $e) {
                         $counts['skipped']++;
@@ -142,7 +158,7 @@ class ImportRhbFacilityListJob implements ShouldQueue
                 $target['prefectureCode'],
                 $target['download'],
                 excludedFacilityCodes: $failedFacilityCodes[$key] ?? [],
-                origin: $origins[$target['download']->id],
+                origin: $target['origin'],
             );
         }
 
@@ -177,15 +193,16 @@ class ImportRhbFacilityListJob implements ShouldQueue
      * real changes -- only differences caused by our own parser or
      * normalizer changes -- so they must not read as openings or closures.
      */
-    private function eventOriginFor(RhbDatasetDownload $download): MedicalFacilityEventOrigin
+    private function eventOriginFor(RhbDatasetDownload $download, bool $isPrefectureTracked): MedicalFacilityEventOrigin
     {
+        // imported_at is still as loaded: this run only sets it afterwards.
         if ($this->force && $download->imported_at !== null) {
             return MedicalFacilityEventOrigin::Reprocessed;
         }
 
-        return $download->isFirstPublication()
-            ? MedicalFacilityEventOrigin::Baseline
-            : MedicalFacilityEventOrigin::Detected;
+        return $isPrefectureTracked
+            ? MedicalFacilityEventOrigin::Detected
+            : MedicalFacilityEventOrigin::Baseline;
     }
 
     private function resolveExpander(): BundleExpanderInterface

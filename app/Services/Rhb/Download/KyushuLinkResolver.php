@@ -35,6 +35,20 @@ use RuntimeException;
  */
 final class KyushuLinkResolver implements BureauLinkResolverInterface
 {
+    /**
+     * @var array<string, string>
+     */
+    private const array PREFECTURE_CODES_BY_OFFICE_NAME = [
+        '福岡' => '40',
+        '佐賀' => '41',
+        '長崎' => '42',
+        '熊本' => '43',
+        '大分' => '44',
+        '宮崎' => '45',
+        '鹿児島' => '46',
+        '沖縄' => '47',
+    ];
+
     public function __construct(
         private readonly IndexPageEraDateParser $eraDateParser = new IndexPageEraDateParser,
     ) {}
@@ -59,6 +73,7 @@ final class KyushuLinkResolver implements BureauLinkResolverInterface
 
             $url = rtrim($baseUrl, '/').'/'.ltrim($hrefMatch[1], '/');
             $filename = basename($hrefMatch[1]);
+            $prefectureCode = $this->resolvePrefectureCode($cellHtml);
 
             foreach (RhbCategory::cases() as $category) {
                 $links[] = new ResolvedRhbDatasetLink(
@@ -66,11 +81,31 @@ final class KyushuLinkResolver implements BureauLinkResolverInterface
                     url: $url,
                     filename: $filename,
                     publishedOn: $publishedOn,
+                    prefectureCode: $prefectureCode,
                 );
             }
         }
 
         return $links;
+    }
+
+    /**
+     * Each cell is headed by its office name, which carries the prefecture
+     * name ("佐賀事務所", or "指導監査課（福岡）" for the Fukuoka head
+     * office). Null when none is found: the zip is then always downloaded
+     * rather than risk skipping an in-scope prefecture.
+     */
+    private function resolvePrefectureCode(string $cellHtml): ?string
+    {
+        $text = strip_tags($cellHtml);
+
+        foreach (self::PREFECTURE_CODES_BY_OFFICE_NAME as $name => $code) {
+            if (str_contains($text, $name)) {
+                return $code;
+            }
+        }
+
+        return null;
     }
 
     private function scopeToLatestTable(string $html): string

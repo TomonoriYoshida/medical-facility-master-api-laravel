@@ -60,7 +60,7 @@ medical_facilities (1) ──< (多) medical_facility_events
 | `id` | bigint (PK) | - | 内部主キー |
 | `medical_facility_id` | FK → `medical_facilities` | - | `restrictOnDelete()`。監査ログとしての性質上、イベント履歴が残っている施設の物理削除を防ぐため |
 | `event_type` | unsignedTinyInteger | - | `App\Enums\MedicalFacilityEventType` をcast。1:Created 2:Removed 3:Updated の3種類のみ（粗い粒度）。「再開」は別種別にせず、「過去に`Removed`イベントがある施設への`Created`」として導出する。休止⇔現存の切り替えも特別扱いせず、通常の`Updated`イベント（`payload`内の`status`変化）として記録する |
-| `origin` | unsignedTinyInteger | - | `App\Enums\MedicalFacilityEventOrigin` をcast。記録された理由。1:Baseline（初回取込。その局・カテゴリで最初に取り込んだ公開データ。全施設が一度に Created になるだけで、開業ではない） 2:Detected（検知。公開データ間の実際の変化） 3:Reprocessed（再処理。取込済みの公開データを `rhb:import --force` で取り込み直したときの記録。元データは同じなので、差分はパーサー・正規化処理の変更によるもの）。APIで「実際の変化」として扱うのは Detected のみ |
+| `origin` | unsignedTinyInteger | - | `App\Enums\MedicalFacilityEventOrigin` をcast。記録された理由。1:Baseline（初回取込。その県・カテゴリの施設がまだ1件もない状態での取込。運用開始時と、あとから `RHB_PREFECTURES` に県を追加したとき。全施設が一度に Created になるだけで、開業ではない） 2:Detected（検知。公開データ間の実際の変化） 3:Reprocessed（再処理。取込済みの公開データを `rhb:import --force` で取り込み直したときの記録。元データは同じなので、差分はパーサー・正規化処理の変更によるもの）。APIで「実際の変化」として扱うのは Detected のみ |
 | `occurred_on` | date | - | 検出元スナップショットの日付。**インポート実行日時（`now()`）ではなく`rhb_dataset_downloads.published_on`を使うこと** |
 | `payload` | json | ✓ | 変更前後の値の差分（`Updated`）や、その時点のスナップショット（`Created`/`Removed`）など、変更内容の詳細 |
 | `rhb_dataset_download_id` | FK → `rhb_dataset_downloads`, nullable | ✓ | `nullOnDelete()`。どのダウンロードスナップショットから検出されたイベントかの出典情報 |

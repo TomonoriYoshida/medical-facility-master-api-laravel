@@ -34,6 +34,22 @@ class KyushuLinkResolverTest extends TestCase
         $this->assertEqualsCanonicalizing(RhbCategory::cases(), $byFilename['000500320.zip']);
     }
 
+    public function test_each_zip_is_tagged_with_its_offices_prefecture(): void
+    {
+        $links = (new KyushuLinkResolver)->resolve($this->fixture(), 'https://kouseikyoku.mhlw.go.jp');
+
+        $prefectureByFilename = [];
+        foreach ($links as $link) {
+            $prefectureByFilename[$link->filename] = $link->prefectureCode;
+        }
+
+        $this->assertSame([
+            '000500310.zip' => '40',
+            '000500311.zip' => '41',
+            '000500320.zip' => '47',
+        ], $prefectureByFilename);
+    }
+
     public function test_the_okinawa_offices_stray_zip_link_around_its_name_is_not_mistaken_for_the_real_link(): void
     {
         // Regression test: real data shows the 沖縄 office's cell has its
