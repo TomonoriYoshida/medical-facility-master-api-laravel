@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\MedicalFacility;
+use App\Models\User;
 use App\Observers\MedicalFacilityObserver;
 use App\Services\Text\ItaijiNormalizer;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -30,7 +31,9 @@ class AppServiceProvider extends ServiceProvider
 
         // The API itself is public and unauthenticated (public open data),
         // so its Scramble-generated docs are public too, not just in local.
-        Gate::define('viewApiDocs', fn (): bool => true);
+        // The nullable $user is what lets the gate run for guests at all:
+        // without it, Laravel denies every unauthenticated request.
+        Gate::define('viewApiDocs', fn (?User $user): bool => true);
 
         RateLimiter::for('api', fn (Request $request): Limit => Limit::perMinute(config('api.rate_limit_per_minute'))
             ->by($request->ip()));

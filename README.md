@@ -148,6 +148,10 @@ vendor/bin/sail artisan rhb:import --wait           # 取込（完了まで待�
 
 定期実行（毎日 05:00 / 05:30）をローカルで動かす場合は、`vendor/bin/sail artisan schedule:work` を起動してください。
 
+## 本番デプロイ
+
+サーバー1台に Docker Compose で構築します（FrankenPHP による HTTPS の自動化、キューワーカー、スケジューラ、MySQL を含む）。手順は [DEPLOY.md](DEPLOY.md) を参照してください。
+
 ## テスト
 
 ```bash
