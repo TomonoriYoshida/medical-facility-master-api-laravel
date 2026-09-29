@@ -48,7 +48,8 @@
 | `department_category` | 診療科目の大分類（1: 内科 / 5: 眼科 など26分類） |
 | `designated_from` / `designated_to` | 指定年月日の範囲（`YYYY-MM-DD`、両端を含む） |
 | `designation_reason` | 登録理由（`新規` / `交代` / `組織変更` / `移転` など） |
-| `sort` | 並び順（`designated_on`: 指定年月日の古い順、`-designated_on`: 新しい順。省略時は id 順） |
+| `updated_since` | この日時以降に内容が変わった施設（ISO 8601、例: `2026-10-01T05:00:00Z`。廃止・再開も含む） |
+| `sort` | 並び順（`designated_on` / `-designated_on`: 指定年月日の古い順 / 新しい順、`updated_at` / `-updated_at`: 内容が変わった日時の古い順 / 新しい順。省略時は id 順） |
 | `per_page` | 1ページの件数（既定25、最大100） |
 
 種別・状態などの項目は `{"code": 値, "label": 日本語名}` の形で返します。`code` はそのまま対応する絞り込み条件に渡せます。絞り込み画面の選択肢は `/api/v1/options` でまとめて取得できます（1日キャッシュ可能、ETag 対応）。
@@ -111,6 +112,17 @@ GET /api/v1/medical-facilities?designated_from=2026-08-01&designated_to=2026-08-
   }
 }
 ```
+
+### 差分の同期
+
+施設データを自分のシステムに取り込んで使う場合は、初回に全件を取得したあと、変わった施設だけを取得できます。
+
+1. 初回: `GET /api/v1/medical-facilities?sort=updated_at&per_page=100` を最後のページまで取得し、取得した中で最も新しい `updated_at` を保存する
+2. 以降: `GET /api/v1/medical-facilities?updated_since={保存した updated_at}&sort=updated_at&per_page=100` で変わった施設だけを取得し、`id` で上書きする
+
+- `updated_at` は施設の内容が実際に変わったとき（廃止・再開を含む）だけ更新され、変化のない取込では変わりません。廃止された施設は削除されず、`status` が「廃止」になります。
+- `updated_since` はその日時ちょうどの施設も含むため、前回の最後の施設が再び返ることがあります。`id` で上書きすれば問題ありません。
+- データが変わるのは毎日の取込（日本時間 05:00〜06:00 頃）のときだけです。この時間を避けて同期すると、ページの途中でデータが変わることはありません。
 
 ### 変化の一覧・施設の履歴
 

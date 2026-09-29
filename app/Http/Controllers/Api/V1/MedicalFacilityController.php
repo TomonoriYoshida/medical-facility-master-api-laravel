@@ -11,6 +11,7 @@ use App\Services\Text\AddressNormalizer;
 use App\Services\Text\ItaijiNormalizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Carbon;
 
 class MedicalFacilityController extends Controller
 {
@@ -40,12 +41,16 @@ class MedicalFacilityController extends Controller
             ->when($filters['q'] ?? null, fn ($query, $term) => $this->applySearch($query, $term))
             ->when($filters['designated_from'] ?? null, fn ($query, $date) => $query->where('designated_on', '>=', $date))
             ->when($filters['designated_to'] ?? null, fn ($query, $date) => $query->where('designated_on', '<=', $date))
+            // updated_at is stored in UTC; the given offset, if any, is honored.
+            ->when($filters['updated_since'] ?? null, fn ($query, $since) => $query->where('updated_at', '>=', Carbon::parse($since)->utc()))
             ->when($filters['designation_reason'] ?? null, fn ($query, $reason) => $query->whereJsonContains('designation_history', ['reason' => $reason]))
             ->when(
                 $filters['sort'] ?? null,
                 fn ($query, $sort) => match ($sort) {
                     'designated_on' => $query->orderBy('designated_on'),
                     '-designated_on' => $query->orderByDesc('designated_on'),
+                    'updated_at' => $query->orderBy('updated_at'),
+                    '-updated_at' => $query->orderByDesc('updated_at'),
                     default => $query,
                 },
             )

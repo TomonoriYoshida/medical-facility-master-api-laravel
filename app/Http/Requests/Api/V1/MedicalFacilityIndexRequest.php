@@ -65,8 +65,17 @@ class MedicalFacilityIndexRequest extends FormRequest
              */
             'designation_reason' => ['sometimes', 'string', 'encoding:UTF-8', 'max:20'],
 
-            /** 並び順。`designated_on`（指定年月日の古い順）、`-designated_on`（新しい順、指定年月日のない施設は末尾）。省略時はid順 */
-            'sort' => ['sometimes', Rule::in(['id', 'designated_on', '-designated_on'])],
+            /**
+             * 並び順。`designated_on` / `-designated_on`（指定年月日の古い順 / 新しい順、指定年月日のない施設は末尾）、
+             * `updated_at` / `-updated_at`（内容が変わった日時の古い順 / 新しい順）。省略時はid順
+             */
+            'sort' => ['sometimes', Rule::in(['id', 'designated_on', '-designated_on', 'updated_at', '-updated_at'])],
+
+            /**
+             * この日時以降に内容が変わった施設だけを返す（ISO 8601、例: 2026-10-01T05:00:00Z）。
+             * 廃止・再開も含む。差分の同期には `sort=updated_at` と組み合わせる
+             */
+            'updated_since' => ['sometimes', 'date'],
 
             /** 1ページあたりの件数（デフォルト25、最大100） */
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],

@@ -348,6 +348,62 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $this->assertSame([$oldest->id, $newest->id], $response->json('data.*.id'));
     }
 
+    public function test_updated_since_returns_facilities_changed_at_or_after_the_given_time(): void
+    {
+        $atTheInstant = MedicalFacility::factory()->create(['updated_at' => '2026-10-01 05:00:00']);
+        $later = MedicalFacility::factory()->create(['updated_at' => '2026-10-02 05:10:00']);
+        MedicalFacility::factory()->create(['updated_at' => '2026-10-01 04:59:59']);
+
+        $response = $this->getJson('/api/v1/medical-facilities?'.http_build_query(['updated_since' => '2026-10-01T05:00:00Z']));
+
+        $response->assertOk();
+        $this->assertEqualsCanonicalizing([$atTheInstant->id, $later->id], $response->json('data.*.id'));
+    }
+
+    public function test_updated_since_honors_the_given_utc_offset(): void
+    {
+        $changed = MedicalFacility::factory()->create(['updated_at' => '2026-10-01 05:00:00']);
+        MedicalFacility::factory()->create(['updated_at' => '2026-10-01 04:00:00']);
+
+        // 14:00 in Japan is 05:00 UTC, the timezone updated_at is stored in.
+        $response = $this->getJson('/api/v1/medical-facilities?'.http_build_query(['updated_since' => '2026-10-01T14:00:00+09:00']));
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $changed->id);
+    }
+
+    public function test_sorts_by_update_time_oldest_first_with_id_as_tiebreaker(): void
+    {
+        $latest = MedicalFacility::factory()->create(['updated_at' => '2026-10-03 05:00:00']);
+        $earliestA = MedicalFacility::factory()->create(['updated_at' => '2026-10-01 05:00:00']);
+        $earliestB = MedicalFacility::factory()->create(['updated_at' => '2026-10-01 05:00:00']);
+
+        $response = $this->getJson('/api/v1/medical-facilities?sort=updated_at');
+
+        $response->assertOk();
+        $this->assertSame([$earliestA->id, $earliestB->id, $latest->id], $response->json('data.*.id'));
+    }
+
+    public function test_sorts_by_update_time_newest_first(): void
+    {
+        $earliest = MedicalFacility::factory()->create(['updated_at' => '2026-10-01 05:00:00']);
+        $latest = MedicalFacility::factory()->create(['updated_at' => '2026-10-03 05:00:00']);
+
+        $response = $this->getJson('/api/v1/medical-facilities?sort=-updated_at');
+
+        $response->assertOk();
+        $this->assertSame([$latest->id, $earliest->id], $response->json('data.*.id'));
+    }
+
+    public function test_returns_422_when_updated_since_is_not_a_date_time(): void
+    {
+        $response = $this->getJson('/api/v1/medical-facilities?updated_since=yesterday-ish');
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['updated_since']);
+    }
+
     /**
      * @return array<string, array{array<string, string>, string}>
      */
