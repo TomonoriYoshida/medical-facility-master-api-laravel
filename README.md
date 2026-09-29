@@ -35,6 +35,7 @@
 | GET | `/api/v1/medical-facilities/{id}/events` | 施設の履歴（新規・廃止・変更） |
 | GET | `/api/v1/medical-facility-events` | 全国の変化の一覧（ページネーション付き） |
 | GET | `/api/v1/options` | 絞り込みの選択肢（都道府県・施設種別・診療科目など） |
+| GET | `/api/v1/exports` | 一括ダウンロードのファイル一覧（都道府県ごと・全体の CSV / JSON Lines） |
 
 一覧APIの主なクエリパラメータ:
 
@@ -115,11 +116,38 @@ GET /api/v1/medical-facilities?designated_from=2026-08-01&designated_to=2026-08-
 }
 ```
 
+### 一括ダウンロード
+
+全件を API で取得すると全国で約2,250回の呼び出しになるため、毎日の取込の後に、取り扱う範囲の全施設（廃止を含む）をファイルで提供しています。
+
+```jsonc
+// GET /api/v1/exports
+{
+  "data": {
+    "generated_at": "2026-10-01T22:10:05.000000Z",
+    "data_updated_at": "2026-10-01T20:41:12.000000Z",   // ファイル内で最も新しい updated_at
+    "files": [
+      { "name": "medical-facilities-13.csv.gz", "format": "csv", "prefecture": { "code": "13", "label": "東京都" },
+        "records": 23810, "size": 1180000, "sha256": "…", "url": "https://…/api/v1/exports/medical-facilities-13.csv.gz" },
+      /* …都道府県ごとの csv / jsonl と、全体の medical-facilities-all.csv.gz / .jsonl.gz */
+    ]
+  }
+}
+```
+
+- **形式**: どちらも gzip 圧縮、UTF-8（BOM なし）です。
+  - **JSON Lines**（`.jsonl.gz`）: 1行1施設。施設詳細 API と同じ形です。
+  - **CSV**（`.csv.gz`）: 見出し行付き、RFC 4180 形式。種別などはコードと名前を別の列にし、診療科目は `|` 区切り（例: `1|5` と `内科|眼科`）、`designation_history` と `bed_counts` は JSON 文字列です。
+- **更新**: 毎日 07:10（日本時間）に、データが変わっていれば作り直します。変わっていなければファイルも `ETag`（SHA-256）も変わりません。
+- **検証**: ダウンロードしたファイルは `sha256` で検証できます。`If-None-Match` を付けると、変わっていなければ 304 を返します。
+- **差分との組み合わせ**: ファイルで全件を取り込んだあと、`data_updated_at` を起点に `updated_since` で差分を取得できます（次の節）。
+- 出典表示は `GET /api/v1/exports` の `meta.attribution` にあります。ファイルを再配布する場合も、出典の表示が必要です（「データの出典・利用条件」を参照）。
+
 ### 差分の同期
 
 施設データを自分のシステムに取り込んで使う場合は、初回に全件を取得したあと、変わった施設だけを取得できます。
 
-1. 初回: `GET /api/v1/medical-facilities?sort=updated_at&per_page=100` を最後のページまで取得し、取得した中で最も新しい `updated_at` を保存する
+1. 初回: 一括ダウンロードのファイルで全件を取り込み、`data_updated_at` を保存する（API で取得する場合は `sort=updated_at&per_page=100` を最後のページまで取得し、最も新しい `updated_at` を保存する）
 2. 以降: `GET /api/v1/medical-facilities?updated_since={保存した updated_at}&sort=updated_at&per_page=100` で変わった施設だけを取得し、`id` で上書きする
 
 - `updated_at` は施設の内容が実際に変わったとき（廃止・再開を含む）だけ更新され、変化のない取込では変わりません。廃止された施設は削除されず、`status` が「廃止」になります。
@@ -176,6 +204,7 @@ GET /api/v1/medical-facility-events?event_type=1&prefecture_code=13&occurred_fro
           2. 施設ごとに新規作成 / 変更検出 / 再開を判定して保存し、イベントを記録（Sync 層）
           3. 今回のデータに載っていない施設を「廃止」にする（廃止検知）
 07:00  rhb:status     すべての局・カテゴリが取込済みで最新かを確認
+07:10  rhb:export     一括ダウンロードのファイルを作成（データが変わったときだけ）
 ```
 
 - **取込済みはスキップ**: 取込済みのデータは翌日以降スキップします。パーサー変更時などは `rhb:import --force` で再取込できます。
