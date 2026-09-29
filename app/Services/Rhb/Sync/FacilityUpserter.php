@@ -2,6 +2,7 @@
 
 namespace App\Services\Rhb\Sync;
 
+use App\Enums\MedicalFacilityEventOrigin;
 use App\Enums\MedicalFacilityEventType;
 use App\Enums\MedicalFacilityStatus;
 use App\Models\MedicalFacility;
@@ -31,8 +32,11 @@ final class FacilityUpserter
      * @param  array<string, mixed>  $mappedAttributes
      * @return array{facility: MedicalFacility, outcome: FacilityUpsertOutcome}
      */
-    public function upsert(array $mappedAttributes, RhbDatasetDownload $download): array
-    {
+    public function upsert(
+        array $mappedAttributes,
+        RhbDatasetDownload $download,
+        MedicalFacilityEventOrigin $origin = MedicalFacilityEventOrigin::Detected,
+    ): array {
         $facility = MedicalFacility::where('bureau_code', $mappedAttributes['bureau_code'])
             ->where('prefecture_code', $mappedAttributes['prefecture_code'])
             ->where('institution_type', $mappedAttributes['institution_type'])
@@ -40,29 +44,29 @@ final class FacilityUpserter
             ->first();
 
         if ($facility === null) {
-            return $this->create($mappedAttributes, $download);
+            return $this->create($mappedAttributes, $download, $origin);
         }
 
         if ($facility->status === MedicalFacilityStatus::Closed) {
-            return $this->reopen($facility, $mappedAttributes, $download);
+            return $this->reopen($facility, $mappedAttributes, $download, $origin);
         }
 
-        return $this->updateIfChanged($facility, $mappedAttributes, $download);
+        return $this->updateIfChanged($facility, $mappedAttributes, $download, $origin);
     }
 
     /**
      * @param  array<string, mixed>  $mappedAttributes
      * @return array{facility: MedicalFacility, outcome: FacilityUpsertOutcome}
      */
-    private function create(array $mappedAttributes, RhbDatasetDownload $download): array
+    private function create(array $mappedAttributes, RhbDatasetDownload $download, MedicalFacilityEventOrigin $origin): array
     {
-        return DB::transaction(function () use ($mappedAttributes, $download) {
+        return DB::transaction(function () use ($mappedAttributes, $download, $origin) {
             $facility = MedicalFacility::create([
                 ...$mappedAttributes,
                 'last_seen_rhb_dataset_download_id' => $download->id,
             ]);
 
-            $this->recordEvent($facility, MedicalFacilityEventType::Created, $download, [
+            $this->recordEvent($facility, MedicalFacilityEventType::Created, $origin, $download, [
                 'name' => $facility->name,
                 'address' => $facility->address,
             ]);
@@ -82,16 +86,16 @@ final class FacilityUpserter
      * @param  array<string, mixed>  $mappedAttributes
      * @return array{facility: MedicalFacility, outcome: FacilityUpsertOutcome}
      */
-    private function reopen(MedicalFacility $facility, array $mappedAttributes, RhbDatasetDownload $download): array
+    private function reopen(MedicalFacility $facility, array $mappedAttributes, RhbDatasetDownload $download, MedicalFacilityEventOrigin $origin): array
     {
-        return DB::transaction(function () use ($facility, $mappedAttributes, $download) {
+        return DB::transaction(function () use ($facility, $mappedAttributes, $download, $origin) {
             $facility->fill([
                 ...$mappedAttributes,
                 'last_seen_rhb_dataset_download_id' => $download->id,
             ]);
             $facility->save();
 
-            $this->recordEvent($facility, MedicalFacilityEventType::Created, $download, [
+            $this->recordEvent($facility, MedicalFacilityEventType::Created, $origin, $download, [
                 'name' => $facility->name,
                 'address' => $facility->address,
             ]);
@@ -108,7 +112,7 @@ final class FacilityUpserter
      * @param  array<string, mixed>  $mappedAttributes
      * @return array{facility: MedicalFacility, outcome: FacilityUpsertOutcome}
      */
-    private function updateIfChanged(MedicalFacility $facility, array $mappedAttributes, RhbDatasetDownload $download): array
+    private function updateIfChanged(MedicalFacility $facility, array $mappedAttributes, RhbDatasetDownload $download, MedicalFacilityEventOrigin $origin): array
     {
         $current = [];
 
@@ -131,14 +135,14 @@ final class FacilityUpserter
             return ['facility' => $facility, 'outcome' => FacilityUpsertOutcome::Unchanged];
         }
 
-        return DB::transaction(function () use ($facility, $mappedAttributes, $download, $changes) {
+        return DB::transaction(function () use ($facility, $mappedAttributes, $download, $changes, $origin) {
             $facility->fill([
                 ...$mappedAttributes,
                 'last_seen_rhb_dataset_download_id' => $download->id,
             ]);
             $facility->save();
 
-            $this->recordEvent($facility, MedicalFacilityEventType::Updated, $download, $changes);
+            $this->recordEvent($facility, MedicalFacilityEventType::Updated, $origin, $download, $changes);
 
             return ['facility' => $facility, 'outcome' => FacilityUpsertOutcome::Updated];
         });
@@ -150,12 +154,14 @@ final class FacilityUpserter
     private function recordEvent(
         MedicalFacility $facility,
         MedicalFacilityEventType $type,
+        MedicalFacilityEventOrigin $origin,
         RhbDatasetDownload $download,
         array $payload,
     ): void {
         MedicalFacilityEvent::create([
             'medical_facility_id' => $facility->id,
             'event_type' => $type,
+            'origin' => $origin,
             'occurred_on' => $download->published_on,
             'payload' => $payload,
             'rhb_dataset_download_id' => $download->id,

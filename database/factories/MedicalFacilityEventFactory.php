@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\MedicalFacilityEventOrigin;
 use App\Enums\MedicalFacilityEventType;
 use App\Models\MedicalFacility;
 use App\Models\MedicalFacilityEvent;
@@ -24,6 +25,7 @@ class MedicalFacilityEventFactory extends Factory
         return [
             'medical_facility_id' => MedicalFacility::factory(),
             'event_type' => $eventType,
+            'origin' => MedicalFacilityEventOrigin::Detected,
             'occurred_on' => fake()->dateTimeBetween('-1 year', 'now'),
             'payload' => match ($eventType) {
                 MedicalFacilityEventType::Created => ['name' => fake()->company()],

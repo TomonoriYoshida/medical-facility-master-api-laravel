@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\MedicalFacilityEventOrigin;
 use App\Enums\MedicalFacilityEventType;
 use Database\Factories\MedicalFacilityEventFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'medical_facility_id',
     'event_type',
+    'origin',
     'occurred_on',
     'payload',
     'rhb_dataset_download_id',
@@ -46,6 +48,7 @@ class MedicalFacilityEvent extends Model
     {
         return [
             'event_type' => MedicalFacilityEventType::class,
+            'origin' => MedicalFacilityEventOrigin::class,
             'occurred_on' => 'date',
             'payload' => 'array',
         ];
