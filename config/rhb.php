@@ -109,4 +109,27 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Monitoring
+    |--------------------------------------------------------------------------
+    |
+    | rhb:status flags a bureau/category whose latest data is older than
+    | stale_after_days. Bureaus republish monthly, so 45 days allows for a
+    | late month before assuming the page moved or stopped being parsed.
+    |
+    | The healthchecks URLs are ping URLs of healthchecks.io checks (see
+    | DEPLOY.md). The scheduler pings them after each run, "/fail" appended
+    | on failure; the service alerts on a failure ping or when a daily ping
+    | never arrives (server or scheduler down). Unset disables pinging.
+    |
+    */
+
+    'stale_after_days' => (int) env('RHB_STALE_AFTER_DAYS', 45),
+
+    'healthchecks' => [
+        'download_url' => env('RHB_HEALTHCHECK_DOWNLOAD_URL'),
+        'status_url' => env('RHB_HEALTHCHECK_STATUS_URL'),
+    ],
+
 ];

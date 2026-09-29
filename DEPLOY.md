@@ -9,10 +9,18 @@
                     ┌──────────────── サーバー（Docker Compose） ────────────────┐
 インターネット ──▶  │ app        FrankenPHP（Caddy 内蔵）: HTTPS 終端 + API       │
   :80 / :443        │ worker     queue:work（取込ジョブの実行）                   │
-                    │ scheduler  schedule:work（05:00 rhb:download / 05:30 rhb:import）│
+                    │ scheduler  schedule:work（毎日の取得・取込・状態確認）      │
                     │ mysql      MySQL 8.4（外部には非公開）                      │
                     └────────────────────────────────────────────────────────────┘
 ```
+
+scheduler は毎日（日本時間）次の順に実行します。
+
+| 時刻 | コマンド | 内容 |
+|---|---|---|
+| 05:00 | `rhb:download` | 各局の一覧ページを確認し、新しい版を取得 |
+| 05:30 | `rhb:import` | 取込ジョブをキューに投入（worker が実行） |
+| 07:00 | `rhb:status` | すべての局・カテゴリが取込済みで最新かを確認 |
 
 | ファイル | 内容 |
 |---|---|
@@ -157,11 +165,40 @@ gunzip -c ~/backups/mf-2026-10-01.sql.gz | docker compose exec -T mysql sh -c 'e
 ```bash
 docker compose ps                              # 各コンテナの状態
 docker compose logs -f worker                  # 取込ジョブのログ
+docker compose exec app php artisan rhb:status     # 局・カテゴリごとの取込状況
 docker compose exec app php artisan queue:failed   # 失敗したジョブ
 docker compose exec app php artisan rhb:import --force --wait   # 取込をやり直す
 ```
 
-## 6. 独自ドメインへの切り替え
+## 6. 監視
+
+[healthchecks.io](https://healthchecks.io/)（無料プランで20件まで）で、日次処理の失敗と停止を通知します。scheduler が処理のたびに「成功」または「失敗」を送り、失敗が届いたとき、または予定の時刻を過ぎても何も届かないとき（サーバーや scheduler の停止）に、healthchecks.io が通知します。
+
+| チェック | 送信元 | 失敗として通知される例 |
+|---|---|---|
+| download | `rhb:download`（05:00） | 局のサイトにつながらない、一覧ページの構造が変わりリンクを読み取れない、カテゴリのリンクが見つからない |
+| status | `rhb:status`（07:00） | 取込ジョブの失敗（未取込）、局のデータが一度も取得できていない（未取得）、最新の公開日が45日より古い（`RHB_STALE_AFTER_DAYS` で変更可） |
+
+設定手順:
+
+1. healthchecks.io にサインアップします。通知先には登録したメールアドレスが最初から設定されています。Discord や Slack なども「Integrations」で追加できます。
+2. チェックを2つ作ります（「Add Check」）。スケジュールは「Cron」を選び、タイムゾーンを `Asia/Tokyo` にします。
+
+   | 名前 | Cron | Grace Time |
+   |---|---|---|
+   | `rhb-download` | `0 5 * * *` | 1 hour |
+   | `rhb-status` | `0 7 * * *` | 1 hour |
+
+3. それぞれの ping URL（`https://hc-ping.com/...`）を `.env` の `RHB_HEALTHCHECK_DOWNLOAD_URL` / `RHB_HEALTHCHECK_STATUS_URL` に設定し、`docker compose up -d` で反映します。
+4. 動作を確認します。healthchecks.io の画面で、チェックの状態が「up」になれば届いています。
+
+   ```bash
+   docker compose exec scheduler php artisan schedule:test --name=rhb:status
+   ```
+
+通知が来たら、`rhb:status` と `docker compose logs worker` / `docker compose logs scheduler` で原因を確認します。取込ジョブの失敗は翌日の `rhb:import` で自動的に再試行されますが、一覧ページの構造の変更はリゾルバ（`app/Services/Rhb/Download/`）の修正が必要です。
+
+## 7. 独自ドメインへの切り替え
 
 1. ドメインの DNS に、サーバーの IP アドレスを指す A レコードを追加します（例: `api.example.com`）。
 2. `.env` の `SERVER_NAME` と `APP_URL` を新しいホスト名に変えます。

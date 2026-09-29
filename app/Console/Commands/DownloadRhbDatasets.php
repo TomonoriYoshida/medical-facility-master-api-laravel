@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\RhbCategory;
 use App\Models\RhbDatasetDownload;
 use App\Services\Rhb\Download\ResolvedRhbDatasetLink;
 use Illuminate\Console\Attributes\Description;
@@ -71,10 +72,30 @@ class DownloadRhbDatasets extends Command
             return false;
         }
 
-        $resolver = app($meta['resolver']);
-        $links = $resolver->resolve($html, $meta['base_url']);
+        // Resolvers throw when a bureau restructures its index page. Caught
+        // here so one bureau's page change fails only that bureau instead of
+        // aborting the run before the remaining bureaus are checked.
+        try {
+            $links = app($meta['resolver'])->resolve($html, $meta['base_url']);
+        } catch (Throwable $e) {
+            $this->components->error("{$meta['label']}: 一覧ページの解析に失敗しました ({$e->getMessage()})");
+
+            return false;
+        }
 
         $hasFailure = false;
+
+        // A page change can also silently drop one category's link while the
+        // rest still resolve; left unreported, that category would just stop
+        // updating.
+        $resolvedCategories = array_map(fn (ResolvedRhbDatasetLink $link): RhbCategory => $link->category, $links);
+
+        foreach (RhbCategory::cases() as $category) {
+            if (! in_array($category, $resolvedCategories, true)) {
+                $this->components->error("{$meta['label']}: {$category->name} のリンクが見つかりません");
+                $hasFailure = true;
+            }
+        }
 
         foreach ($links as $link) {
             if (! $this->processLink($bureauKey, $meta, $link)) {

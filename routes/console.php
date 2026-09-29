@@ -2,10 +2,15 @@
 
 use Illuminate\Support\Facades\Schedule;
 
+$downloadHealthcheckUrl = config('rhb.healthchecks.download_url');
+$statusHealthcheckUrl = config('rhb.healthchecks.status_url');
+
 Schedule::command('rhb:download')
     ->dailyAt('05:00')
     ->timezone('Asia/Tokyo')
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    ->pingOnSuccessIf(filled($downloadHealthcheckUrl), (string) $downloadHealthcheckUrl)
+    ->pingOnFailureIf(filled($downloadHealthcheckUrl), "{$downloadHealthcheckUrl}/fail");
 
 // rhb:import only enqueues jobs onto QUEUE_CONNECTION; a separately-running
 // worker (queue:work, or the queue:listen process `composer run dev`
@@ -17,3 +22,12 @@ Schedule::command('rhb:import')
     ->dailyAt('05:30')
     ->timezone('Asia/Tokyo')
     ->withoutOverlapping();
+
+// Since rhb:import's exit code cannot reflect the queued jobs' outcome,
+// rhb:status reports whether they succeeded. A full import takes ~20
+// minutes, so by 07:00 every job has finished (or failed for good).
+Schedule::command('rhb:status')
+    ->dailyAt('07:00')
+    ->timezone('Asia/Tokyo')
+    ->pingOnSuccessIf(filled($statusHealthcheckUrl), (string) $statusHealthcheckUrl)
+    ->pingOnFailureIf(filled($statusHealthcheckUrl), "{$statusHealthcheckUrl}/fail");

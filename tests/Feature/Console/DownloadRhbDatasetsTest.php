@@ -5,6 +5,10 @@ namespace Tests\Feature\Console;
 use App\Enums\RhbBureau;
 use App\Enums\RhbCategory;
 use App\Models\RhbDatasetDownload;
+use App\Services\Rhb\Download\BureauLinkResolverInterface;
+use App\Services\Rhb\Download\HokkaidoLinkResolver;
+use App\Services\Rhb\Download\ResolvedRhbDatasetLink;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -148,6 +152,40 @@ class DownloadRhbDatasetsTest extends TestCase
 
         $this->assertDatabaseCount('rhb_dataset_downloads', 3);
         $this->assertDatabaseMissing('rhb_dataset_downloads', ['filename' => '000499343.xlsx']);
+    }
+
+    public function test_an_unparseable_index_page_does_not_prevent_other_bureaus_from_downloading(): void
+    {
+        Storage::fake('local');
+        $this->fakeHttp('<html><body>ページの構成が変わりました</body></html>');
+
+        $this->artisan('rhb:download', ['--bureau' => ['hokkaido', 'tohoku']])
+            ->expectsOutputToContain('一覧ページの解析に失敗しました')
+            ->assertExitCode(1);
+
+        $this->assertFalse(RhbDatasetDownload::where('bureau_code', RhbBureau::Hokkaido)->exists());
+        $this->assertTrue(RhbDatasetDownload::where('bureau_code', RhbBureau::Tohoku)->exists());
+    }
+
+    public function test_a_category_missing_from_the_index_page_is_reported_as_a_failure(): void
+    {
+        Storage::fake('local');
+        $this->app->instance(HokkaidoLinkResolver::class, new class implements BureauLinkResolverInterface
+        {
+            public function resolve(string $html, string $baseUrl): array
+            {
+                return [
+                    new ResolvedRhbDatasetLink(RhbCategory::Medical, "{$baseUrl}/medical.xlsx", 'medical.xlsx', CarbonImmutable::parse('2026-09-01')),
+                    new ResolvedRhbDatasetLink(RhbCategory::Dental, "{$baseUrl}/dental.xlsx", 'dental.xlsx', CarbonImmutable::parse('2026-09-01')),
+                ];
+            }
+        });
+
+        $this->artisan('rhb:download', ['--bureau' => ['hokkaido']])
+            ->expectsOutputToContain('Pharmacy のリンクが見つかりません')
+            ->assertExitCode(1);
+
+        $this->assertDatabaseCount('rhb_dataset_downloads', 2);
     }
 
     public function test_without_a_bureau_filter_it_downloads_from_every_configured_bureau(): void
