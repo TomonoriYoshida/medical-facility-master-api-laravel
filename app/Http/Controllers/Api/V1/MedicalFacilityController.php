@@ -33,6 +33,7 @@ class MedicalFacilityController extends Controller
         $filters = $request->validated();
 
         $facilities = MedicalFacility::query()
+            ->when($filters['medical_institution_code'] ?? null, fn ($query, $codes) => $query->whereIn('medical_institution_code', explode(',', $codes)))
             ->when($filters['prefecture_code'] ?? null, fn ($query, $value) => $query->where('prefecture_code', $value))
             ->when($filters['institution_type'] ?? null, fn ($query, $value) => $query->where('institution_type', $value))
             ->when($filters['status'] ?? null, fn ($query, $value) => $query->where('status', $value))

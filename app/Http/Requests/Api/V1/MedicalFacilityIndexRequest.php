@@ -44,6 +44,12 @@ class MedicalFacilityIndexRequest extends FormRequest
             /** 診療科目の大分類 */
             'department_category' => ['sometimes', Rule::enum(DepartmentBaseCategory::class)],
 
+            /**
+             * 10桁の医療機関コード（都道府県番号＋点数表番号＋医療機関コード7桁）。
+             * カンマ区切りで最大100件まで指定できる
+             */
+            'medical_institution_code' => ['sometimes', 'string', 'regex:/^[0-9]{10}(,[0-9]{10}){0,99}$/'],
+
             /** 施設名・住所のあいまい検索キーワード（全角半角・異体字ゆれを吸収） */
             'q' => ['sometimes', 'string', 'encoding:UTF-8', 'max:255'],
 
