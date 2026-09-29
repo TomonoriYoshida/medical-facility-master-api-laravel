@@ -168,6 +168,8 @@ docker compose logs -f worker                  # 取込ジョブのログ
 docker compose exec app php artisan rhb:status     # 局・カテゴリごとの取込状況
 docker compose exec app php artisan queue:failed   # 失敗したジョブ
 docker compose exec app php artisan rhb:import --force --wait   # 取込をやり直す
+docker compose exec app php artisan rhb:prune --dry-run         # 範囲（RHB_PREFECTURES / RHB_CATEGORIES）を狭めた後、範囲外のデータを確認
+docker compose exec app php artisan rhb:prune                   # 確認のうえ削除
 ```
 
 ## 6. 監視
