@@ -281,4 +281,95 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors(['per_page']);
     }
+
+    public function test_filters_by_designation_date_range_inclusive_of_both_ends(): void
+    {
+        $onFirstDay = MedicalFacility::factory()->create(['designated_on' => '2026-08-01']);
+        $onLastDay = MedicalFacility::factory()->create(['designated_on' => '2026-08-31']);
+        MedicalFacility::factory()->create(['designated_on' => '2026-07-31']);
+        MedicalFacility::factory()->create(['designated_on' => '2026-09-01']);
+
+        $response = $this->getJson('/api/v1/medical-facilities?designated_from=2026-08-01&designated_to=2026-08-31');
+
+        $response->assertOk();
+        $this->assertEqualsCanonicalizing([$onFirstDay->id, $onLastDay->id], $response->json('data.*.id'));
+    }
+
+    public function test_designated_from_alone_has_no_upper_bound(): void
+    {
+        $recent = MedicalFacility::factory()->create(['designated_on' => '2026-09-01']);
+        MedicalFacility::factory()->create(['designated_on' => '1985-04-01']);
+
+        $response = $this->getJson('/api/v1/medical-facilities?designated_from=2026-01-01');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $recent->id);
+    }
+
+    public function test_filters_by_designation_reason(): void
+    {
+        $newlyOpened = MedicalFacility::factory()->create([
+            'designation_history' => [['reason' => '新規', 'date' => '2026-08-01']],
+        ]);
+        MedicalFacility::factory()->create([
+            'designation_history' => [['reason' => '交代', 'date' => '2026-08-01']],
+        ]);
+        MedicalFacility::factory()->create(['designation_history' => []]);
+
+        $response = $this->getJson('/api/v1/medical-facilities?designation_reason='.urlencode('新規'));
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $newlyOpened->id);
+    }
+
+    public function test_sorts_by_designation_date_newest_first_with_id_as_tiebreaker(): void
+    {
+        $oldest = MedicalFacility::factory()->create(['designated_on' => '2001-01-01']);
+        $newestA = MedicalFacility::factory()->create(['designated_on' => '2026-09-01']);
+        $newestB = MedicalFacility::factory()->create(['designated_on' => '2026-09-01']);
+        $undated = MedicalFacility::factory()->create(['designated_on' => null]);
+
+        $response = $this->getJson('/api/v1/medical-facilities?sort=-designated_on');
+
+        $response->assertOk();
+        $this->assertSame([$newestA->id, $newestB->id, $oldest->id, $undated->id], $response->json('data.*.id'));
+    }
+
+    public function test_sorts_by_designation_date_oldest_first(): void
+    {
+        $newest = MedicalFacility::factory()->create(['designated_on' => '2026-09-01']);
+        $oldest = MedicalFacility::factory()->create(['designated_on' => '2001-01-01']);
+
+        $response = $this->getJson('/api/v1/medical-facilities?sort=designated_on');
+
+        $response->assertOk();
+        $this->assertSame([$oldest->id, $newest->id], $response->json('data.*.id'));
+    }
+
+    /**
+     * @return array<string, array{array<string, string>, string}>
+     */
+    public static function invalidDesignationParameterProvider(): array
+    {
+        return [
+            'designated_from not a date' => [['designated_from' => '2026/08/01'], 'designated_from'],
+            'designated_to not a date' => [['designated_to' => 'yesterday'], 'designated_to'],
+            'designated_to before designated_from' => [['designated_from' => '2026-09-01', 'designated_to' => '2026-08-01'], 'designated_to'],
+            'unknown sort' => [['sort' => 'name'], 'sort'],
+        ];
+    }
+
+    /**
+     * @param  array<string, string>  $query
+     */
+    #[DataProvider('invalidDesignationParameterProvider')]
+    public function test_returns_422_for_invalid_designation_parameters(array $query, string $invalidField): void
+    {
+        $response = $this->getJson('/api/v1/medical-facilities?'.http_build_query($query));
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors([$invalidField]);
+    }
 }
