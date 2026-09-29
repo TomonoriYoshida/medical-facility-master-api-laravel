@@ -5,6 +5,7 @@ namespace App\Http\Resources\Api\V1;
 use App\Enums\DepartmentBaseCategory;
 use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityStatus;
+use App\Enums\Prefecture;
 use App\Enums\RhbBureau;
 use App\Models\MedicalFacility;
 use Illuminate\Http\Request;
@@ -30,6 +31,7 @@ class MedicalFacilityResource extends JsonResource
             'bureau' => $this->codeAndLabel($this->bureau_code),
             'name' => $this->name,
             'prefecture_code' => $this->prefecture_code,
+            'prefecture' => $this->codeAndLabel(Prefecture::from($this->prefecture_code)),
             'postal_code' => $this->postal_code,
             'address' => $this->address,
             'phone_number' => $this->phone_number,
@@ -50,9 +52,9 @@ class MedicalFacilityResource extends JsonResource
      * accepts, so a client can feed it straight back as a query parameter;
      * `label` is the Japanese display name.
      *
-     * @return array{code: int, label: string}
+     * @return array{code: int|string, label: string}
      */
-    private function codeAndLabel(InstitutionType|MedicalFacilityStatus|RhbBureau|DepartmentBaseCategory $enum): array
+    private function codeAndLabel(InstitutionType|MedicalFacilityStatus|RhbBureau|DepartmentBaseCategory|Prefecture $enum): array
     {
         return [
             'code' => $enum->value,

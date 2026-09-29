@@ -34,6 +34,7 @@
 | GET | `/api/v1/medical-facilities/{id}` | 施設詳細 |
 | GET | `/api/v1/medical-facilities/{id}/events` | 施設の履歴（新規・廃止・変更） |
 | GET | `/api/v1/medical-facility-events` | 全国の変化の一覧（ページネーション付き） |
+| GET | `/api/v1/options` | 絞り込みの選択肢（都道府県・施設種別・診療科目など） |
 
 一覧APIの主なクエリパラメータ:
 
@@ -50,7 +51,20 @@
 | `sort` | 並び順（`designated_on`: 指定年月日の古い順、`-designated_on`: 新しい順。省略時は id 順） |
 | `per_page` | 1ページの件数（既定25、最大100） |
 
-種別・状態などの項目は `{"code": 値, "label": 日本語名}` の形で返します。`code` はそのまま対応する絞り込み条件に渡せます。
+種別・状態などの項目は `{"code": 値, "label": 日本語名}` の形で返します。`code` はそのまま対応する絞り込み条件に渡せます。絞り込み画面の選択肢は `/api/v1/options` でまとめて取得できます（1日キャッシュ可能、ETag 対応）。
+
+```jsonc
+// GET /api/v1/options
+{
+  "data": {
+    "prefectures": [{ "code": "01", "label": "北海道", "bureau": { "code": 1, "label": "北海道厚生局" } } /* …47件 */],
+    "institution_types": [{ "code": 1, "label": "病院" } /* … */],
+    "statuses": [/* … */], "bureaus": [/* … */], "department_categories": [/* 26分類 */],
+    "event_types": [{ "code": 1, "label": "新規" }, { "code": 2, "label": "廃止" }, { "code": 3, "label": "変更" }],
+    "designation_reasons": ["新規", "組織変更", "交代", "移動", "移転", "その他", "継承"]  // 代表的な値（元データは自由記述）
+  }
+}
+```
 
 ```http
 GET /api/v1/medical-facilities?q=札幌&institution_type=1&per_page=1
@@ -73,6 +87,7 @@ GET /api/v1/medical-facilities?designated_from=2026-08-01&designated_to=2026-08-
       "bureau": { "code": 1, "label": "北海道厚生局" },
       "name": "医療法人　愛全病院",
       "prefecture_code": "01",
+      "prefecture": { "code": "01", "label": "北海道" },
       "postal_code": "005-0813",
       "address": "札幌市南区川沿１３条２丁目１番３８号",
       "phone_number": "011-571-5670",
