@@ -15,6 +15,7 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
     Route::get('exports', [ExportController::class, 'index'])->name('exports.index');
     Route::get('exports/{filename}', [ExportController::class, 'show'])
         ->where('filename', '[A-Za-z0-9._-]+')
+        ->middleware('throttle:exports')
         ->name('exports.show');
     // Fixed values that change only with a deploy, so clients may cache them.
     Route::get('options', OptionController::class)

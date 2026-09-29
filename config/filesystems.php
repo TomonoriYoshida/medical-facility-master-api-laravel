@@ -33,7 +33,9 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // Nothing here is meant to be fetched by URL: downloads and
+            // exports are only ever served through their own routes.
+            'serve' => false,
             'throw' => false,
             'report' => false,
         ],
