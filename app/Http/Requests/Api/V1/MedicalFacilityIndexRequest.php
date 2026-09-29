@@ -46,6 +46,27 @@ class MedicalFacilityIndexRequest extends FormRequest
             /** 施設名・住所のあいまい検索キーワード（全角半角・異体字ゆれを吸収） */
             'q' => ['sometimes', 'string', 'encoding:UTF-8', 'max:255'],
 
+            /** 指定年月日がこの日以降（YYYY-MM-DD） */
+            'designated_from' => ['sometimes', 'date_format:Y-m-d'],
+
+            /** 指定年月日がこの日以前（YYYY-MM-DD） */
+            'designated_to' => [
+                'sometimes',
+                'date_format:Y-m-d',
+                // Only compared when present: after_or_equal falls back to
+                // parsing "designated_from" itself as a date otherwise.
+                Rule::when($this->filled('designated_from'), 'after_or_equal:designated_from'),
+            ],
+
+            /**
+             * 登録理由（`designation_history` の `reason`）。例: 新規、交代、組織変更、移転。
+             * 指定年月日と組み合わせると「期間内に新規開業した施設」を取得できる
+             */
+            'designation_reason' => ['sometimes', 'string', 'encoding:UTF-8', 'max:20'],
+
+            /** 並び順。`designated_on`（指定年月日の古い順）、`-designated_on`（新しい順、指定年月日のない施設は末尾）。省略時はid順 */
+            'sort' => ['sometimes', Rule::in(['id', 'designated_on', '-designated_on'])],
+
             /** 1ページあたりの件数（デフォルト25、最大100） */
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ];

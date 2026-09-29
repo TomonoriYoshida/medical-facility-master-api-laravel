@@ -35,6 +35,17 @@ class MedicalFacilityController extends Controller
             ->when($filters['bureau_code'] ?? null, fn ($query, $value) => $query->where('bureau_code', $value))
             ->when($filters['department_category'] ?? null, fn ($query, $value) => $query->whereJsonContains('department_categories', (int) $value))
             ->when($filters['q'] ?? null, fn ($query, $term) => $this->applySearch($query, $term))
+            ->when($filters['designated_from'] ?? null, fn ($query, $date) => $query->where('designated_on', '>=', $date))
+            ->when($filters['designated_to'] ?? null, fn ($query, $date) => $query->where('designated_on', '<=', $date))
+            ->when($filters['designation_reason'] ?? null, fn ($query, $reason) => $query->whereJsonContains('designation_history', ['reason' => $reason]))
+            ->when(
+                $filters['sort'] ?? null,
+                fn ($query, $sort) => match ($sort) {
+                    'designated_on' => $query->orderBy('designated_on'),
+                    '-designated_on' => $query->orderByDesc('designated_on'),
+                    default => $query,
+                },
+            )
             ->orderBy('id')
             ->paginate($filters['per_page'] ?? 25);
 

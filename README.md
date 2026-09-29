@@ -42,12 +42,21 @@
 | `status` | 指定状態（1: 指定中 / 2: 廃止 / 3: 休止） |
 | `bureau_code` | 地方厚生局（1: 北海道 〜 8: 九州） |
 | `department_category` | 診療科目の大分類（1: 内科 / 5: 眼科 など26分類） |
+| `designated_from` / `designated_to` | 指定年月日の範囲（`YYYY-MM-DD`、両端を含む） |
+| `designation_reason` | 登録理由（`新規` / `交代` / `組織変更` / `移転` など） |
+| `sort` | 並び順（`designated_on`: 指定年月日の古い順、`-designated_on`: 新しい順。省略時は id 順） |
 | `per_page` | 1ページの件数（既定25、最大100） |
 
 種別・状態などの項目は `{"code": 値, "label": 日本語名}` の形で返します。`code` はそのまま対応する絞り込み条件に渡せます。
 
 ```http
 GET /api/v1/medical-facilities?q=札幌&institution_type=1&per_page=1
+```
+
+たとえば「2026年8月に新規開業した施設（新しい順）」は次のように取得できます。登録理由が `交代`（開設者の交代）や `移転` の施設は、指定年月日が新しくても新規開業ではないため、`designation_reason=新規` で除外します。
+
+```http
+GET /api/v1/medical-facilities?designated_from=2026-08-01&designated_to=2026-08-31&designation_reason=新規&sort=-designated_on
 ```
 
 ```jsonc
