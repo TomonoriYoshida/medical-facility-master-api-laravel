@@ -25,6 +25,11 @@ final class JapaneseEraDateParser
 
     private const string PATTERN = '/^(明|大|昭|平|令)(元|\d+)\.\s*(\d+)\.\s*(\d+)$/u';
 
+    public function isDate(string $raw): bool
+    {
+        return preg_match(self::PATTERN, trim($raw)) === 1;
+    }
+
     public function parse(string $raw): ?CarbonImmutable
     {
         $trimmed = trim($raw);

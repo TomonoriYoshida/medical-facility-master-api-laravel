@@ -88,6 +88,8 @@ final class FacilityUpserter
      */
     private function reopen(MedicalFacility $facility, array $mappedAttributes, RhbDatasetDownload $download, MedicalFacilityEventOrigin $origin): array
     {
+        $origin = $this->originAgainstPreviousData($facility, $download, $origin);
+
         return DB::transaction(function () use ($facility, $mappedAttributes, $download, $origin) {
             $facility->fill([
                 ...$mappedAttributes,
@@ -135,6 +137,8 @@ final class FacilityUpserter
             return ['facility' => $facility, 'outcome' => FacilityUpsertOutcome::Unchanged];
         }
 
+        $origin = $this->originAgainstPreviousData($facility, $download, $origin);
+
         return DB::transaction(function () use ($facility, $mappedAttributes, $download, $changes, $origin) {
             $facility->fill([
                 ...$mappedAttributes,
@@ -146,6 +150,33 @@ final class FacilityUpserter
 
             return ['facility' => $facility, 'outcome' => FacilityUpsertOutcome::Updated];
         });
+    }
+
+    /**
+     * A difference from what this facility already had from the same
+     * publication cannot come from the source data, which is the same --
+     * only from re-parsing it after a parser or normalizer change. Decided
+     * per facility, since the job's run-level view (--force on an imported
+     * download) misses publications whose imported_at was never set, e.g.
+     * after a run with failed rows. Must run before last_seen moves.
+     */
+    private function originAgainstPreviousData(
+        MedicalFacility $facility,
+        RhbDatasetDownload $download,
+        MedicalFacilityEventOrigin $origin,
+    ): MedicalFacilityEventOrigin {
+        if ($facility->last_seen_rhb_dataset_download_id === null) {
+            return $origin;
+        }
+
+        $previousPublishedOn = RhbDatasetDownload::query()
+            ->whereKey($facility->last_seen_rhb_dataset_download_id)
+            ->first()
+            ?->published_on;
+
+        return $previousPublishedOn?->toDateString() === $download->published_on->toDateString()
+            ? MedicalFacilityEventOrigin::Reprocessed
+            : $origin;
     }
 
     /**

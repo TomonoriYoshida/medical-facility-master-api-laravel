@@ -45,7 +45,7 @@ medical_facilities (1) ──< (多) medical_facility_events
 | `founder_name` | string | ✓ | 開設者（法人名＋代表者名等、原本の表記をそのまま保持）。個人名を含むことが多いため、**APIでは返さない** |
 | `administrator_name` | string | ✓ | 管理者名（常に個人名）。**APIでは返さない** |
 | `designated_on` | date | ✓ | 指定年月日（最初の指定日） |
-| `designation_history` | json, nullable | ✓ | 指定年月日欄に埋め込まれた処理履歴（新規／組織変更／交代等の事由と日付のペアの配列）。**`medical_facility_events`には流し込まない**——events テーブルは「自分（インポーター）が今回の同期で検知した変化」を意味する追記専用ログであり、この履歴はインポート開始以前から存在する情報のため意味が異なる。単なるマップ済み属性として通常の差分検出（`AttributeDiff`）の対象にする |
+| `designation_history` | json, nullable | ✓ | 指定年月日欄に埋め込まれた履歴（`{reason, date}` の配列。`reason` は新規／組織変更／交代等の登録理由、`date` は現在の指定期間の開始日と見られる）。約1割の施設は登録理由の記載がなく、`reason` が null になる。**`medical_facility_events`には流し込まない**——events テーブルは「自分（インポーター）が今回の同期で検知した変化」を意味する追記専用ログであり、この履歴はインポート開始以前から存在する情報のため意味が異なる。単なるマップ済み属性として通常の差分検出（`AttributeDiff`）の対象にする |
 | `bed_counts` | json, nullable | ✓ | 病床種別（療養／一般／精神等）→ 病床数のラベル付き辞書。薬局は常にnull |
 | `department_categories` | json, nullable | ✓ | `App\Enums\DepartmentBaseCategory`値の配列（`AsEnumCollection`キャスト）。医科・歯科のみ、薬局は常に空配列。原本の診療科目欄は「基本診療科名＋自由な修飾語」の組み合わせ命名が医療法施行規則で公式に許容されており事実上自由記述に近いため、修飾語を含む完全一致ではなく「大分類（内科系・外科系など）のどれに該当するか」というマーカーマッチによる粗い分類に留めている（実データ検証で出現件数の96.3%を分類可能と確認済み。完全一致の復元は制度上原理的に不可能） |
 | `created_at` / `updated_at` | datetime | - | `updated_at`は施設データ（マップ済み属性）が実際に変わった時だけ更新される。取込のたびに行う`last_seen_rhb_dataset_download_id`の更新や、`facilities:renormalize`による正規化カラムの再計算では変わらない（APIでも「施設情報の最終更新日時」として返しているため） |
@@ -61,7 +61,7 @@ medical_facilities (1) ──< (多) medical_facility_events
 | `id` | bigint (PK) | - | 内部主キー |
 | `medical_facility_id` | FK → `medical_facilities` | - | `restrictOnDelete()`。監査ログとしての性質上、イベント履歴が残っている施設の物理削除を防ぐため |
 | `event_type` | unsignedTinyInteger | - | `App\Enums\MedicalFacilityEventType` をcast。1:Created 2:Removed 3:Updated の3種類のみ（粗い粒度）。「再開」は別種別にせず、「過去に`Removed`イベントがある施設への`Created`」として導出する。休止⇔現存の切り替えも特別扱いせず、通常の`Updated`イベント（`payload`内の`status`変化）として記録する |
-| `origin` | unsignedTinyInteger | - | `App\Enums\MedicalFacilityEventOrigin` をcast。記録された理由。1:Baseline（初回取込。その県・カテゴリの施設がまだ1件もない状態での取込。運用開始時と、あとから `RHB_PREFECTURES` に県を追加したとき。全施設が一度に Created になるだけで、開業ではない） 2:Detected（検知。公開データ間の実際の変化） 3:Reprocessed（再処理。取込済みの公開データを `rhb:import --force` で取り込み直したときの記録。元データは同じなので、差分はパーサー・正規化処理の変更によるもの）。APIで「実際の変化」として扱うのは Detected のみ |
+| `origin` | unsignedTinyInteger | - | `App\Enums\MedicalFacilityEventOrigin` をcast。記録された理由。1:Baseline（初回取込。その県・カテゴリの施設がまだ1件もない状態での取込。運用開始時と、あとから `RHB_PREFECTURES` に県を追加したとき。全施設が一度に Created になるだけで、開業ではない） 2:Detected（検知。公開データ間の実際の変化） 3:Reprocessed（再処理。すでに取り込んだ公開データを取り込み直したときの記録。元データは同じなので、差分はパーサー・正規化処理の変更によるもの。変更・再開は、その施設を前回見た公開データと公開日が同じかで施設ごとに判定し、新規は `rhb:import --force` で取込済みのデータを取り込み直したときに付く）。APIで「実際の変化」として扱うのは Detected のみ |
 | `occurred_on` | date | - | 検出元スナップショットの日付。**インポート実行日時（`now()`）ではなく`rhb_dataset_downloads.published_on`を使うこと** |
 | `payload` | json | ✓ | 変更前後の値の差分（`Updated`）や、その時点のスナップショット（`Created`/`Removed`）など、変更内容の詳細 |
 | `rhb_dataset_download_id` | FK → `rhb_dataset_downloads`, nullable | ✓ | `nullOnDelete()`。どのダウンロードスナップショットから検出されたイベントかの出典情報 |
