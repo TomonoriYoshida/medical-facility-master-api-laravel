@@ -3,6 +3,7 @@
 namespace App\Services\Rhb\Sync;
 
 use App\Enums\InstitutionType;
+use App\Enums\MedicalFacilityEventOrigin;
 use App\Enums\MedicalFacilityEventType;
 use App\Enums\MedicalFacilityStatus;
 use App\Models\MedicalFacility;
@@ -46,6 +47,7 @@ final class FacilityClosureReconciler
         string $prefectureCode,
         RhbDatasetDownload $download,
         array $excludedFacilityCodes = [],
+        MedicalFacilityEventOrigin $origin = MedicalFacilityEventOrigin::Detected,
     ): Collection {
         $closed = collect();
 
@@ -58,15 +60,16 @@ final class FacilityClosureReconciler
                 $query->whereNull('last_seen_rhb_dataset_download_id')
                     ->orWhere('last_seen_rhb_dataset_download_id', '!=', $download->id);
             })
-            ->chunkById(self::CHUNK_SIZE, function (Collection $facilities) use ($download, $closed) {
+            ->chunkById(self::CHUNK_SIZE, function (Collection $facilities) use ($download, $closed, $origin) {
                 foreach ($facilities as $facility) {
-                    DB::transaction(function () use ($facility, $download) {
+                    DB::transaction(function () use ($facility, $download, $origin) {
                         $facility->status = MedicalFacilityStatus::Closed;
                         $facility->save();
 
                         MedicalFacilityEvent::create([
                             'medical_facility_id' => $facility->id,
                             'event_type' => MedicalFacilityEventType::Removed,
+                            'origin' => $origin,
                             'occurred_on' => $download->published_on,
                             'payload' => ['name' => $facility->name, 'address' => $facility->address],
                             'rhb_dataset_download_id' => $download->id,

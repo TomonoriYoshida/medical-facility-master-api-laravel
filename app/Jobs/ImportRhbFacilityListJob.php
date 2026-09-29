@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Enums\InstitutionType;
+use App\Enums\MedicalFacilityEventOrigin;
 use App\Enums\RhbBureau;
 use App\Enums\RhbCategory;
 use App\Models\RhbDatasetDownload;
@@ -87,6 +88,14 @@ class ImportRhbFacilityListJob implements ShouldQueue
 
         $expander = $this->resolveExpander();
 
+        // Decided up front, before this run sets imported_at below.
+        /** @var array<int, MedicalFacilityEventOrigin> $origins */
+        $origins = [];
+
+        foreach ($downloads as $download) {
+            $origins[$download->id] = $this->eventOriginFor($download);
+        }
+
         $counts = array_fill_keys(['created', 'reopened', 'updated', 'unchanged', 'skipped'], 0);
 
         /** @var array<string, array{institutionType: InstitutionType, prefectureCode: string, download: RhbDatasetDownload}> $reconcileTargets */
@@ -104,7 +113,7 @@ class ImportRhbFacilityListJob implements ShouldQueue
                     $key = "{$mapped['institution_type']->value}:{$unit->prefectureCode}";
 
                     try {
-                        $result = $upserter->upsert($mapped, $download);
+                        $result = $upserter->upsert($mapped, $download, $origins[$download->id]);
                         $counts[strtolower($result['outcome']->name)]++;
 
                         $reconcileTargets[$key] = [
@@ -133,6 +142,7 @@ class ImportRhbFacilityListJob implements ShouldQueue
                 $target['prefectureCode'],
                 $target['download'],
                 excludedFacilityCodes: $failedFacilityCodes[$key] ?? [],
+                origin: $origins[$target['download']->id],
             );
         }
 
@@ -160,6 +170,22 @@ class ImportRhbFacilityListJob implements ShouldQueue
                 "rhb:import: {$counts['skipped']} row(s) failed to upsert for {$this->bureau->name}/{$this->category->name}; see the error log for details.",
             ));
         }
+    }
+
+    /**
+     * Re-importing an already imported publication (--force) cannot surface
+     * real changes -- only differences caused by our own parser or
+     * normalizer changes -- so they must not read as openings or closures.
+     */
+    private function eventOriginFor(RhbDatasetDownload $download): MedicalFacilityEventOrigin
+    {
+        if ($this->force && $download->imported_at !== null) {
+            return MedicalFacilityEventOrigin::Reprocessed;
+        }
+
+        return $download->isFirstPublication()
+            ? MedicalFacilityEventOrigin::Baseline
+            : MedicalFacilityEventOrigin::Detected;
     }
 
     private function resolveExpander(): BundleExpanderInterface

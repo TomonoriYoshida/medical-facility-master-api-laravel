@@ -66,6 +66,20 @@ class RhbDatasetDownload extends Model
     }
 
     /**
+     * Whether no earlier publication exists for this bureau + category, i.e.
+     * this is the one tracking started from. Importing it creates every
+     * facility at once, which is not a wave of openings.
+     */
+    public function isFirstPublication(): bool
+    {
+        return ! static::query()
+            ->where('bureau_code', $this->bureau_code)
+            ->where('category', $this->category)
+            ->where('published_on', '<', $this->published_on->toDateString())
+            ->exists();
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

@@ -3,12 +3,14 @@
 namespace Tests\Feature\Jobs;
 
 use App\Enums\InstitutionType;
+use App\Enums\MedicalFacilityEventOrigin;
 use App\Enums\MedicalFacilityEventType;
 use App\Enums\MedicalFacilityStatus;
 use App\Enums\RhbBureau;
 use App\Enums\RhbCategory;
 use App\Jobs\ImportRhbFacilityListJob;
 use App\Models\MedicalFacility;
+use App\Models\MedicalFacilityEvent;
 use App\Models\RhbDatasetDownload;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -157,6 +159,74 @@ class ImportRhbFacilityListJobTest extends TestCase
         ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical, force: true);
 
         $this->assertDatabaseHas('medical_facilities', ['facility_code' => '0111000']);
+    }
+
+    public function test_events_from_the_first_publication_are_recorded_as_baseline(): void
+    {
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+        ]);
+
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        $event = MedicalFacilityEvent::sole();
+        $this->assertSame(MedicalFacilityEventType::Created, $event->event_type);
+        $this->assertSame(MedicalFacilityEventOrigin::Baseline, $event->origin);
+    }
+
+    public function test_changes_between_publications_are_recorded_as_detected(): void
+    {
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+            $this->hospitalRow('2', '0111001', '病院B'),
+        ], filename: 'r0805.xlsx', publishedOn: '2026-05-01');
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        $june = $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A改'),
+            $this->hospitalRow('2', '0111002', '新規病院'),
+        ], filename: 'r0806.xlsx', publishedOn: '2026-06-01');
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        $juneEvents = MedicalFacilityEvent::where('rhb_dataset_download_id', $june->id)->get();
+        $this->assertEqualsCanonicalizing(
+            [MedicalFacilityEventType::Updated, MedicalFacilityEventType::Created, MedicalFacilityEventType::Removed],
+            $juneEvents->pluck('event_type')->all(),
+        );
+        $this->assertTrue($juneEvents->every(fn (MedicalFacilityEvent $event): bool => $event->origin === MedicalFacilityEventOrigin::Detected));
+    }
+
+    public function test_changes_from_force_reimporting_an_imported_publication_are_recorded_as_reprocessed(): void
+    {
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+        ]);
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        // Stands in for a parser change: the stored value no longer matches
+        // what re-parsing the unchanged file produces.
+        MedicalFacility::where('facility_code', '0111000')->update(['name' => '旧パーサーの病院名']);
+
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical, force: true);
+
+        $event = MedicalFacilityEvent::where('event_type', MedicalFacilityEventType::Updated)->sole();
+        $this->assertSame(MedicalFacilityEventOrigin::Reprocessed, $event->origin);
+    }
+
+    public function test_force_on_a_publication_not_yet_imported_still_records_detected_changes(): void
+    {
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+        ], filename: 'r0805.xlsx', publishedOn: '2026-05-01');
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A改'),
+        ], filename: 'r0806.xlsx', publishedOn: '2026-06-01');
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical, force: true);
+
+        $event = MedicalFacilityEvent::where('event_type', MedicalFacilityEventType::Updated)->sole();
+        $this->assertSame(MedicalFacilityEventOrigin::Detected, $event->origin);
     }
 
     public function test_a_run_with_skipped_rows_leaves_the_download_unimported_so_it_is_retried(): void
