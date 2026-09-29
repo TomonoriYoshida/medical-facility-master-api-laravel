@@ -34,6 +34,15 @@ class ScheduledTasksTest extends TestCase
         $this->assertSame('Asia/Tokyo', $event->timezone);
     }
 
+    public function test_rhb_export_is_scheduled_after_the_import_jobs_have_finished(): void
+    {
+        $event = $this->findEvent('rhb:export');
+
+        $this->assertNotNull($event);
+        $this->assertSame('10 7 * * *', $event->expression);
+        $this->assertSame('Asia/Tokyo', $event->timezone);
+    }
+
     private function findEvent(string $commandName): ?object
     {
         $schedule = app(Schedule::class);

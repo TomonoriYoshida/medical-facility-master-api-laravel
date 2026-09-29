@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\MedicalFacilityController;
 use App\Http\Controllers\Api\V1\MedicalFacilityEventController;
 use App\Http\Controllers\Api\V1\OptionController;
@@ -11,6 +12,10 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
         ->name('medical-facilities.events.index');
     Route::get('medical-facility-events', [MedicalFacilityEventController::class, 'index'])
         ->name('medical-facility-events.index');
+    Route::get('exports', [ExportController::class, 'index'])->name('exports.index');
+    Route::get('exports/{filename}', [ExportController::class, 'show'])
+        ->where('filename', '[A-Za-z0-9._-]+')
+        ->name('exports.show');
     // Fixed values that change only with a deploy, so clients may cache them.
     Route::get('options', OptionController::class)
         ->middleware('cache.headers:public;max_age=86400;etag')

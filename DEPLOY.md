@@ -21,6 +21,7 @@ scheduler は毎日（日本時間）次の順に実行します。
 | 05:00 | `rhb:download` | 各局の一覧ページを確認し、新しい版を取得 |
 | 05:30 | `rhb:import` | 取込ジョブをキューに投入（worker が実行） |
 | 07:00 | `rhb:status` | すべての局・カテゴリが取込済みで最新かを確認 |
+| 07:10 | `rhb:export` | 一括ダウンロードのファイルを作成（データが変わったときだけ。全国で約1分半、ファイルは約50MB） |
 
 | ファイル | 内容 |
 |---|---|
@@ -110,6 +111,7 @@ docker compose up -d
 ```bash
 docker compose exec scheduler php artisan rhb:download
 docker compose exec app php artisan rhb:import --wait
+docker compose exec app php artisan rhb:export        # 一括ダウンロードのファイルを作成
 ```
 
 以降は scheduler が毎日 05:00 / 05:30（日本時間）に自動で実行します。

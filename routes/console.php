@@ -23,6 +23,12 @@ Schedule::command('rhb:import')
     ->timezone('Asia/Tokyo')
     ->withoutOverlapping();
 
+// Bulk download files, rebuilt only when the imported data changed.
+Schedule::command('rhb:export')
+    ->dailyAt('07:10')
+    ->timezone('Asia/Tokyo')
+    ->withoutOverlapping();
+
 // Since rhb:import's exit code cannot reflect the queued jobs' outcome,
 // rhb:status reports whether they succeeded. A full import takes ~20
 // minutes, so by 07:00 every job has finished (or failed for good).
