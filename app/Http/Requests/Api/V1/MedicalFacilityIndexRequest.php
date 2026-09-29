@@ -5,6 +5,7 @@ namespace App\Http\Requests\Api\V1;
 use App\Enums\DepartmentBaseCategory;
 use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityStatus;
+use App\Enums\Prefecture;
 use App\Enums\RhbBureau;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -29,7 +30,7 @@ class MedicalFacilityIndexRequest extends FormRequest
     {
         return [
             /** 都道府県コード（JIS X 0401の2桁、01〜47） */
-            'prefecture_code' => ['sometimes', 'string', 'regex:/^(0[1-9]|[1-3][0-9]|4[0-7])$/'],
+            'prefecture_code' => ['sometimes', Rule::enum(Prefecture::class)],
 
             /** 施設種別 */
             'institution_type' => ['sometimes', Rule::enum(InstitutionType::class)],

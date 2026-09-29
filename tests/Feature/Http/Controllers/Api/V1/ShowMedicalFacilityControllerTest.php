@@ -20,6 +20,7 @@ class ShowMedicalFacilityControllerTest extends TestCase
             'institution_type' => InstitutionType::Clinic,
             'status' => MedicalFacilityStatus::Active,
             'bureau_code' => RhbBureau::Hokkaido,
+            'prefecture_code' => '01',
             'department_categories' => [DepartmentBaseCategory::Cardiology, DepartmentBaseCategory::Dermatology],
         ]);
 
@@ -32,6 +33,8 @@ class ShowMedicalFacilityControllerTest extends TestCase
         $response->assertJsonPath('data.institution_type', ['code' => 2, 'label' => '診療所']);
         $response->assertJsonPath('data.status', ['code' => 1, 'label' => '指定中']);
         $response->assertJsonPath('data.bureau', ['code' => 1, 'label' => '北海道厚生局']);
+        $response->assertJsonPath('data.prefecture_code', '01');
+        $response->assertJsonPath('data.prefecture', ['code' => '01', 'label' => '北海道']);
         $response->assertJsonPath('data.department_categories', [
             ['code' => 23, 'label' => '循環器内科'],
             ['code' => 4, 'label' => '皮膚科'],
