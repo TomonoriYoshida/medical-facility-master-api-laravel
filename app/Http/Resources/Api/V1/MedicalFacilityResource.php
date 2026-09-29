@@ -26,6 +26,8 @@ class MedicalFacilityResource extends JsonResource
         return [
             'id' => $this->id,
             'facility_code' => $this->facility_code,
+            /** 全国で一意な10桁の医療機関コード（都道府県番号＋点数表番号＋医療機関コード7桁） */
+            'medical_institution_code' => $this->medical_institution_code,
             'institution_type' => $this->codeAndLabel($this->institution_type),
             'status' => $this->codeAndLabel($this->status),
             'bureau' => $this->codeAndLabel($this->bureau_code),

@@ -40,6 +40,7 @@
 
 | パラメータ | 内容 |
 |---|---|
+| `medical_institution_code` | 10桁の医療機関コード（カンマ区切りで最大100件） |
 | `q` | 施設名・住所のあいまい検索（表記ゆれを吸収） |
 | `prefecture_code` | 都道府県コード（`01`〜`47`） |
 | `institution_type` | 施設種別（1: 病院 / 2: 診療所 / 3: 歯科診療所 / 4: 薬局） |
@@ -83,6 +84,7 @@ GET /api/v1/medical-facilities?designated_from=2026-08-01&designated_to=2026-08-
     {
       "id": 1,
       "facility_code": "0112489",
+      "medical_institution_code": "0110112489",  // 全国で一意な10桁のコード
       "institution_type": { "code": 1, "label": "病院" },
       "status": { "code": 1, "label": "指定中" },
       "bureau": { "code": 1, "label": "北海道厚生局" },

@@ -348,6 +348,75 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $this->assertSame([$oldest->id, $newest->id], $response->json('data.*.id'));
     }
 
+    /**
+     * @return array<string, array{InstitutionType, string}>
+     */
+    public static function scoreTableNumberProvider(): array
+    {
+        return [
+            'hospital (医科)' => [InstitutionType::Hospital, '1311012345'],
+            'clinic (医科)' => [InstitutionType::Clinic, '1311012345'],
+            'dental clinic (歯科)' => [InstitutionType::DentalClinic, '1331012345'],
+            'pharmacy (薬局)' => [InstitutionType::Pharmacy, '1341012345'],
+        ];
+    }
+
+    /**
+     * The nationally unique 10-digit code: prefecture (2) + score table
+     * number (1: 医科, 3: 歯科, 4: 薬局) + the bureau's 7-digit code.
+     */
+    #[DataProvider('scoreTableNumberProvider')]
+    public function test_returns_the_ten_digit_medical_institution_code(InstitutionType $institutionType, string $expectedCode): void
+    {
+        MedicalFacility::factory()->create([
+            'prefecture_code' => '13',
+            'institution_type' => $institutionType,
+            'facility_code' => '1012345',
+        ]);
+
+        $response = $this->getJson('/api/v1/medical-facilities');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.medical_institution_code', $expectedCode);
+    }
+
+    public function test_filters_by_one_or_more_medical_institution_codes(): void
+    {
+        $tokyoClinic = MedicalFacility::factory()->create(['prefecture_code' => '13', 'institution_type' => InstitutionType::Clinic, 'facility_code' => '1012345']);
+        $tokyoPharmacy = MedicalFacility::factory()->create(['prefecture_code' => '13', 'institution_type' => InstitutionType::Pharmacy, 'facility_code' => '1012345']);
+        MedicalFacility::factory()->create(['prefecture_code' => '13', 'institution_type' => InstitutionType::DentalClinic, 'facility_code' => '1012345']);
+
+        $single = $this->getJson('/api/v1/medical-facilities?medical_institution_code=1311012345');
+        $multiple = $this->getJson('/api/v1/medical-facilities?medical_institution_code=1311012345,1341012345');
+
+        $single->assertOk();
+        $this->assertSame([$tokyoClinic->id], $single->json('data.*.id'));
+        $multiple->assertOk();
+        $this->assertEqualsCanonicalizing([$tokyoClinic->id, $tokyoPharmacy->id], $multiple->json('data.*.id'));
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function invalidMedicalInstitutionCodeProvider(): array
+    {
+        return [
+            'seven digits' => ['1012345'],
+            'non-numeric' => ['13101234ab'],
+            'empty item' => ['1311012345,'],
+            'more than 100 codes' => [implode(',', array_fill(0, 101, '1311012345'))],
+        ];
+    }
+
+    #[DataProvider('invalidMedicalInstitutionCodeProvider')]
+    public function test_returns_422_for_an_invalid_medical_institution_code(string $codes): void
+    {
+        $response = $this->getJson('/api/v1/medical-facilities?medical_institution_code='.$codes);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['medical_institution_code']);
+    }
+
     public function test_updated_since_returns_facilities_changed_at_or_after_the_given_time(): void
     {
         $atTheInstant = MedicalFacility::factory()->create(['updated_at' => '2026-10-01 05:00:00']);
