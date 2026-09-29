@@ -51,6 +51,9 @@ RUN composer dump-autoload --optimize --classmap-authoritative --no-dev \
 # env_file), so it can only be cached once the container starts. Not
 # `optimize`: its view:cache step fails because the app has no
 # resources/views (the only page, Scramble's docs UI, is a vendor view).
+# No scramble:cache: measured, restoring the cached document costs as much
+# as generating it (~0.15s a request either way); the docs routes are
+# rate-limited instead.
 COPY --chmod=755 <<'EOF' /usr/local/bin/docker-entrypoint
 #!/bin/sh
 set -e

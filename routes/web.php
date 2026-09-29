@@ -2,4 +2,4 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', fn () => redirect()->route('scramble.docs.ui'));
+Route::get('/', fn () => redirect()->route('scramble.docs.ui'))->middleware('throttle:docs');

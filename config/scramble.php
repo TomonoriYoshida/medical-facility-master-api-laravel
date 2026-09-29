@@ -150,6 +150,7 @@ return [
 
     'middleware' => [
         'web',
+        'throttle:docs',
         RestrictedDocsAccess::class,
     ],
 

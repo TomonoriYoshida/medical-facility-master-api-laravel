@@ -145,7 +145,7 @@ docker compose up -d
 `medical_facility_events`（開業・廃止などの変更履歴）は、取込を重ねて記録していくデータです。各局の公開データから作り直せないので、定期的にバックアップします。
 
 ```bash
-mkdir -p ~/backups
+mkdir -p ~/backups && chmod 700 ~/backups   # ダンプには開設者名・管理者名（個人名）が含まれるため、本人だけが読めるようにする
 crontab -e
 ```
 
@@ -210,5 +210,6 @@ docker compose exec app php artisan rhb:prune                   # 確認のう�
 
 ## 補足
 
-- **レート制限**: API は IP アドレスごとに1分60回です（`API_RATE_LIMIT_PER_MINUTE`）。この構成では app コンテナが直接接続を受けるため、利用者の IP アドレスがそのまま使われます。将来 Cloudflare のプロキシなどを前段に置く場合は、`bootstrap/app.php` で `trustProxies` を設定しないと、全利用者が同じ IP として扱われます。
+- **ファイアウォール**: Docker が公開したポートは、Ubuntu の ufw の設定を経由せずに外部から到達できます。この構成で公開しているのは 80 / 443 だけ（MySQL は公開していない）ですが、`compose.production.yaml` にポートを追加するときは注意してください。
+- **レート制限**: API は IP アドレスごとに1分60回です（`API_RATE_LIMIT_PER_MINUTE`）。仕様書（`/docs/api`）は1分30回（`DOCS_RATE_LIMIT_PER_MINUTE`）、一括ダウンロードのファイルは1時間30回（`EXPORT_DOWNLOADS_PER_HOUR`）です。この構成では app コンテナが直接接続を受けるため、利用者の IP アドレスがそのまま使われます。将来 Cloudflare のプロキシなどを前段に置く場合は、`bootstrap/app.php` で `trustProxies` を設定しないと、全利用者が同じ IP として扱われます。
 - **MySQL のメモリ**: `MYSQL_INNODB_BUFFER_POOL_SIZE` は 512MB 以上にしてください。これを下回ると、検索のたびにディスク読み込みが発生し、応答が 1〜2秒に遅くなります。メモリに余裕があるサーバーでは増やしてもかまいません。
