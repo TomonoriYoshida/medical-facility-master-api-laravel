@@ -4,10 +4,12 @@ namespace Tests\Feature\Services\Rhb\Sync;
 
 use App\Enums\DepartmentBaseCategory;
 use App\Enums\InstitutionType;
+use App\Enums\MedicalFacilityEventOrigin;
 use App\Enums\MedicalFacilityEventType;
 use App\Enums\MedicalFacilityStatus;
 use App\Enums\RhbBureau;
 use App\Models\MedicalFacility;
+use App\Models\MedicalFacilityEvent;
 use App\Models\RhbDatasetDownload;
 use App\Services\Rhb\Sync\FacilityUpserter;
 use App\Services\Rhb\Sync\FacilityUpsertOutcome;
@@ -121,6 +123,33 @@ class FacilityUpserterTest extends TestCase
 
         $event = $result['facility']->events()->where('event_type', MedicalFacilityEventType::Updated)->sole();
         $this->assertEquals(['name' => ['old' => '旧名称', 'new' => '新名称']], $event->payload);
+    }
+
+    public function test_a_change_against_data_from_the_same_publication_is_recorded_as_reprocessed(): void
+    {
+        // e.g. a parser fix re-imported with --force, or a publication whose
+        // earlier import never got imported_at set: either way the source
+        // data is the same, so the difference is our own.
+        $earlierRun = RhbDatasetDownload::factory()->create(['published_on' => '2026-06-01']);
+        $sameDataAgain = RhbDatasetDownload::factory()->create(['published_on' => '2026-06-01']);
+        (new FacilityUpserter)->upsert($this->mappedAttributes(['name' => '旧パーサーの結果']), $earlierRun);
+
+        (new FacilityUpserter)->upsert($this->mappedAttributes(['name' => '新パーサーの結果']), $sameDataAgain, MedicalFacilityEventOrigin::Detected);
+
+        $event = MedicalFacilityEvent::where('event_type', MedicalFacilityEventType::Updated)->sole();
+        $this->assertSame(MedicalFacilityEventOrigin::Reprocessed, $event->origin);
+    }
+
+    public function test_a_change_against_an_earlier_publication_keeps_the_given_origin(): void
+    {
+        $may = RhbDatasetDownload::factory()->create(['published_on' => '2026-05-01']);
+        $june = RhbDatasetDownload::factory()->create(['published_on' => '2026-06-01']);
+        (new FacilityUpserter)->upsert($this->mappedAttributes(['name' => '旧名称']), $may);
+
+        (new FacilityUpserter)->upsert($this->mappedAttributes(['name' => '新名称']), $june, MedicalFacilityEventOrigin::Detected);
+
+        $event = MedicalFacilityEvent::where('event_type', MedicalFacilityEventType::Updated)->sole();
+        $this->assertSame(MedicalFacilityEventOrigin::Detected, $event->origin);
     }
 
     public function test_a_closed_facility_that_reappears_is_reopened_with_a_created_event_not_updated(): void

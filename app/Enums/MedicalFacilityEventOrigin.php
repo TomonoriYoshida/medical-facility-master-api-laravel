@@ -11,9 +11,11 @@ namespace App\Enums;
  *   in it is "Created" merely because we started tracking it.
  * - Detected: a difference between two publications -- an actual opening,
  *   closure or change.
- * - Reprocessed: re-importing an already-imported publication (rhb:import
- *   --force). The data is the same, so any difference comes from our own
- *   parser/normalizer changes, not from the source.
+ * - Reprocessed: a difference found while importing a publication the data
+ *   already came from (rhb:import --force, or a re-run of a publication
+ *   never marked imported). The source data is the same, so the difference
+ *   comes from our own parser/normalizer changes. FacilityUpserter decides
+ *   it per facility by comparing publication dates.
  */
 enum MedicalFacilityEventOrigin: int
 {
