@@ -28,16 +28,23 @@
 
 ### Oracle Cloud の場合
 
-1. インスタンスを作成します。
+1. 先にネットワークを作ります。ホーム画面の「Set up a network with a wizard」→「Create VCN with Internet Connectivity」を既定値のまま実行すると、パブリック・サブネットとインターネット・ゲートウェイが作られます。
+   - インスタンス作成画面の中で VCN を新規作成すると、パブリック IP の割り当てを有効にできない場合があります。
+2. インスタンスを作成します。
    - イメージ: Canonical Ubuntu 24.04
-   - シェイプ: `VM.Standard.A1.Flex`（例: 2 OCPU / 12GB。Always Free の上限は合計 4 OCPU / 24GB）
-   - パブリック IP を割り当てます。sslip.io のホスト名は IP アドレスから作られるため、**予約済みパブリック IP** にしておくと、インスタンスを作り直してもホスト名が変わりません。
-   - 空きがなく作成できない場合は、時間をおいて再試行するか、国内 VPS の 2GB プランで同じ手順を進めます。
-2. VCN のセキュリティ・リストに、次のイングレス・ルールを追加します（ソース `0.0.0.0/0`）。
+   - シェイプ: `VM.Standard.A1.Flex`、1 OCPU / 6GB（Always Free の上限は合計 4 OCPU / 24GB。足りなくなれば後から変更できる）
+     - Always Free のインスタンスは、CPU・メモリ等の使用率が低い状態が続くと回収される場合があります。必要以上に大きいシェイプにすると使用率が低く見えるため、小さめにしています。
+   - ネットワーク: 手順1の VCN と public サブネットを選び、パブリック IPv4 アドレスの自動割り当てを有効にします。この IP アドレスはインスタンスを停止・再起動しても変わらず、削除したときだけ解放されます。
+   - SSH キー: 手元の公開鍵（例: `~/.ssh/id_ed25519.pub`）を貼り付けます。
+3. 「Out of capacity for shape VM.Standard.A1.Flex」と表示された場合は、A1 の空きがありません（東京などの人気リージョンでは頻繁に起きます）。次のいずれかで対処します。
+   - [OCI CLI](https://docs.oracle.com/iaas/Content/API/Concepts/cliconcepts.htm) の `oci compute instance launch` を、成功するまで数分おきに再試行する。短い間隔で呼び続けると API の利用制限にかかるため、60秒以上あけます。
+   - 従量課金（Pay As You Go）にアップグレードする。Always Free の範囲なら請求は発生せず、A1 を確保しやすくなります。無料枠外のリソースを誤って作らないよう、予算アラートを設定しておきます。
+   - 国内 VPS の 2GB プランなど、別のサーバーで同じ手順を進める。
+4. VCN のセキュリティ・リストに、次のイングレス・ルールを追加します（ソース `0.0.0.0/0`）。
    - TCP 80（HTTP。証明書の取得にも使う）
    - TCP 443（HTTPS）
    - UDP 443（HTTP/3。任意）
-3. Oracle の Ubuntu イメージは、SSH 以外の受信を拒否する iptables ルールが初期設定されています。80 / 443 を許可します。
+5. Oracle の Ubuntu イメージは、SSH 以外の受信を拒否する iptables ルールが初期設定されています。80 / 443 を許可します。
 
    ```bash
    sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
@@ -108,7 +115,7 @@ curl "https://203-0-113-1.sslip.io/api/v1/medical-facilities?per_page=1"
 
 ブラウザで `https://<SERVER_NAME>/docs/api` を開き、仕様書が表示されることも確認します。
 
-証明書が取得できない場合は `docker compose logs app` を確認します。よくある原因は、ポート 80 / 443 が閉じていること（手順1のセキュリティ・リストと iptables）です。
+証明書が取得できない場合は `docker compose logs app` を確認します。よくある原因は、ポート 80 / 443 が閉じていること（「1. サーバーの準備」のセキュリティ・リストと iptables）です。
 
 ## 3. 更新のデプロイ
 
