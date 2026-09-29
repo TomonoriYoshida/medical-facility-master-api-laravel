@@ -12,4 +12,26 @@ enum RhbCategory: int
     case Medical = 1;
     case Dental = 2;
     case Pharmacy = 3;
+
+    /**
+     * The lowercase key used in RHB_CATEGORIES and in download paths.
+     */
+    public function key(): string
+    {
+        return strtolower($this->name);
+    }
+
+    /**
+     * The institution types a list of this category contains.
+     *
+     * @return list<InstitutionType>
+     */
+    public function institutionTypes(): array
+    {
+        return match ($this) {
+            self::Medical => [InstitutionType::Hospital, InstitutionType::Clinic],
+            self::Dental => [InstitutionType::DentalClinic],
+            self::Pharmacy => [InstitutionType::Pharmacy],
+        };
+    }
 }

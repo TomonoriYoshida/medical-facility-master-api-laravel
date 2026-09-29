@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Enums\RhbCategory;
 use App\Models\RhbDatasetDownload;
+use App\Services\Rhb\RhbScope;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -21,15 +21,15 @@ use Illuminate\Console\Command;
 #[Description('Check that every regional health bureau (地方厚生局) dataset is downloaded, imported and up to date')]
 class CheckRhbDatasetStatus extends Command
 {
-    public function handle(): int
+    public function handle(RhbScope $scope): int
     {
         $staleAfterDays = config()->integer('rhb.stale_after_days');
 
         $rows = [];
         $problemCount = 0;
 
-        foreach (config()->array('rhb.bureaus') as $meta) {
-            foreach (RhbCategory::cases() as $category) {
+        foreach ($scope->bureaus() as $meta) {
+            foreach ($scope->categories() as $category) {
                 $downloads = RhbDatasetDownload::allFor($meta['bureau'], $category);
                 $publishedOn = $downloads->first()?->published_on;
 

@@ -6,8 +6,9 @@ namespace App\Enums;
  * Why an import recorded a medical_facility_events row, so that only real
  * changes in the source data are presented as such:
  *
- * - Baseline: the first publication imported for a bureau + category. Every
- *   facility in it is "Created" merely because we started tracking it.
+ * - Baseline: the first import of a prefecture + category (at launch, or
+ *   when the prefecture is added to RHB_PREFECTURES later). Every facility
+ *   in it is "Created" merely because we started tracking it.
  * - Detected: a difference between two publications -- an actual opening,
  *   closure or change.
  * - Reprocessed: re-importing an already-imported publication (rhb:import

@@ -63,6 +63,28 @@ class ImportRhbDatasetsTest extends TestCase
         });
     }
 
+    public function test_only_scoped_bureaus_and_categories_are_batched(): void
+    {
+        Bus::fake();
+        config(['rhb.scope.prefectures' => ['02', '39'], 'rhb.scope.categories' => ['dental']]);
+
+        $this->artisan('rhb:import')->assertExitCode(0);
+
+        Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->count() === 2
+            && $batch->jobs->every(fn (ImportRhbFacilityListJob $job): bool => $job->category === RhbCategory::Dental)
+            && $batch->jobs->map(fn (ImportRhbFacilityListJob $job) => $job->bureau)->all() === [RhbBureau::Tohoku, RhbBureau::Shikoku]);
+    }
+
+    public function test_a_bureau_outside_the_scope_is_rejected(): void
+    {
+        Bus::fake();
+        config(['rhb.scope.prefectures' => ['02']]);
+
+        $this->artisan('rhb:import', ['--bureau' => ['hokkaido']])->assertExitCode(1);
+
+        Bus::assertNothingBatched();
+    }
+
     public function test_the_bureau_option_limits_the_batch(): void
     {
         Bus::fake();

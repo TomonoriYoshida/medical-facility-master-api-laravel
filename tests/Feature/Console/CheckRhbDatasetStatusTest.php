@@ -30,6 +30,21 @@ class CheckRhbDatasetStatusTest extends TestCase
             ->assertExitCode(0);
     }
 
+    public function test_only_the_scoped_bureaus_and_categories_are_checked(): void
+    {
+        config(['rhb.scope.prefectures' => ['01'], 'rhb.scope.categories' => ['pharmacy']]);
+        RhbDatasetDownload::factory()->create([
+            'bureau_code' => RhbBureau::Hokkaido,
+            'category' => RhbCategory::Pharmacy,
+            'published_on' => '2026-09-01',
+            'imported_at' => '2026-09-02 05:40:00',
+        ]);
+
+        $this->artisan('rhb:status')
+            ->expectsOutputToContain('すべてのデータセットが取込済みで最新です')
+            ->assertExitCode(0);
+    }
+
     public function test_a_dataset_that_was_never_downloaded_is_a_problem(): void
     {
         $this->createImportedDownloadsForEveryDataset();

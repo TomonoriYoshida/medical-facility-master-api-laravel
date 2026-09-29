@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Enums\RhbCategory;
 use App\Jobs\ImportRhbFacilityListJob;
+use App\Services\Rhb\RhbScope;
 use Illuminate\Bus\Batch;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -24,24 +24,32 @@ use Illuminate\Support\Facades\Bus;
  * category) job is fully independent, so the batch is a flat list.
  */
 #[Signature('rhb:import
-    {--bureau=* : 対象の局キーを絞り込む（config/rhb.phpのキー、指定なしは全局、繰り返し指定可）}
+    {--bureau=* : 対象の局キーを絞り込む（config/rhb.phpのキー、指定なしは対象範囲内の全局、繰り返し指定可）}
     {--wait : バッチが完了するまで待機し、結果を表示する（ローカル動作確認用）}
     {--force : 取込済みのダウンロードも再取込する（パーサー・正規化処理の変更後など）}')]
 #[Description('Import the latest downloaded regional health bureau (地方厚生局) datasets into medical_facilities')]
 class ImportRhbDatasets extends Command
 {
-    public function handle(): int
+    public function handle(RhbScope $scope): int
     {
-        $bureaus = config()->array('rhb.bureaus');
+        $bureaus = $scope->bureaus();
 
         /** @var list<string> $requested */
         $requested = $this->option('bureau');
 
         if ($requested !== []) {
-            $unknown = array_diff($requested, array_keys($bureaus));
+            $unknown = array_diff($requested, array_keys(config()->array('rhb.bureaus')));
 
             if ($unknown !== []) {
                 $this->components->error('未知の局キーです: '.implode(', ', $unknown));
+
+                return Command::FAILURE;
+            }
+
+            $outOfScope = array_diff($requested, array_keys($bureaus));
+
+            if ($outOfScope !== []) {
+                $this->components->error('対象範囲（RHB_PREFECTURES）外の局です: '.implode(', ', $outOfScope));
 
                 return Command::FAILURE;
             }
@@ -52,7 +60,7 @@ class ImportRhbDatasets extends Command
         $jobs = [];
 
         foreach ($bureaus as $meta) {
-            foreach (RhbCategory::cases() as $category) {
+            foreach ($scope->categories() as $category) {
                 $jobs[] = new ImportRhbFacilityListJob($meta['bureau'], $category, force: (bool) $this->option('force'));
             }
         }
