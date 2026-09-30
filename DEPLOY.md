@@ -22,6 +22,7 @@ scheduler は毎日（日本時間）次の順に実行します。
 | 05:30 | `rhb:import` | 取込ジョブをキューに投入（worker が実行） |
 | 07:00 | `rhb:status` | すべての局・カテゴリが取込済みで最新かを確認 |
 | 07:10 | `rhb:export` | 一括ダウンロードのファイルを作成（データが変わったときだけ。全国で約1分半、ファイルは約50MB） |
+| 00:15 | `access-log:check` | 前日のアクセスログを集計し、攻撃の疑いがあれば通知（「8. 不審なアクセスの確認と遮断」） |
 
 | ファイル | 内容 |
 |---|---|
@@ -215,7 +216,7 @@ docker compose exec app php artisan rhb:prune                   # 確認のう�
 | ログ | 場所 | 内容 |
 |---|---|---|
 | アプリのログ | `storage/logs/laravel-YYYY-MM-DD.log` | API のエラー、取込・取得・状態確認の結果（app / worker / scheduler の3つが同じファイルに書く） |
-| アクセスログ | `storage/logs/access.log`（日ごとに `access-<日時>.log` へ切り替え） | すべてのリクエスト（JSON。IP アドレス・URL・ステータス・応答時間など） |
+| アクセスログ | `storage/logs/access.log`（1日ごとに `access-<日時>-<理由>.log.gz` へ切り替え、gzip 圧縮） | すべてのリクエスト（JSON。IP アドレス・URL・ステータス・応答時間など） |
 
 - どちらもボリューム `storage-logs` にあり、コンテナを作り直す更新のデプロイでも消えません。14日より古いものは自動で削除します（アプリのログは `LOG_DAILY_DAYS`）。
 - アクセスログには利用者の IP アドレスが含まれるため、保存期間を14日にしています。`Cookie` と `Authorization` ヘッダーは Caddy が伏せて記録します。
@@ -247,7 +248,70 @@ docker compose exec app tail -f storage/logs/access.log                         
    docker compose exec app php artisan tinker --execute 'Log::error("通知のテスト");'
    ```
 
-## 8. 独自ドメインへの切り替え
+## 8. 不審なアクセスの確認と遮断
+
+### 毎日の自動確認
+
+scheduler が毎日 00:15（日本時間）に `access-log:check` を実行し、前日のアクセスログを集計します。次のどれかに当てはまると、エラーとしてログに記録し、Discord / Slack に通知します（「7. ログ」のエラーの通知）。
+
+| 確認すること | 既定のしきい値（1日あたり） | 疑われる攻撃 |
+|---|---|---|
+| 429（レート制限）の件数 | 50件以上（`ACCESS_ALERT_RATE_LIMITED`） | 大量のリクエスト（スクレイピング、負荷をかける攻撃） |
+| 404（見つからない）の件数 | 200件以上（`ACCESS_ALERT_NOT_FOUND`） | 脆弱性スキャン（`/wp-login.php`、`/.env` などを探す） |
+| 1つの IP アドレスからのリクエスト数 | 3,000件以上（`ACCESS_ALERT_REQUESTS_PER_IP`） | 1か所からの大量アクセス。全国分をページ送りで取得する正当な利用は約2,250件です |
+
+レート制限（1分60回）が攻撃を防いでいても、この確認がなければ気づけません。通常のアクセスで通知が来る場合は、しきい値を `.env` で調整してください。集計した件数は、通知がない日もアプリのログに `access-log:` で始まる行として残ります。
+
+### 攻撃を疑ったときの調べ方
+
+まず、日ごとの集計を確認します（アクセスログを残している14日前まで）。
+
+```bash
+docker compose exec app php artisan access-log:check                     # 前日
+docker compose exec app php artisan access-log:check --date=2026-10-01   # 指定した日（日本時間）
+```
+
+リクエスト数・429・404・5xx の件数、リクエストの多い IP アドレス、404 の多いパスを表示します。さらに詳しく見るときは、アクセスログを直接調べます。サーバーに `jq` を入れておきます（`sudo apt install jq`）。
+
+```bash
+# 14日分のアクセスログ（圧縮されたものを含む）を1つにまとめて取り出す
+docker compose exec -T app sh -c 'zcat -f storage/logs/access*.log*' > /tmp/access.jsonl
+
+# 特定の IP アドレスのリクエスト（時刻・メソッド・URL・ステータス）
+jq -r 'select(.request.client_ip == "198.51.100.1") | [(.ts | todate), .request.method, .request.uri, .status] | @tsv' /tmp/access.jsonl
+
+# 時間ごとのリクエスト数（いつから増えたか）
+jq -r '.ts | strftime("%Y-%m-%d %H:00")' /tmp/access.jsonl | sort | uniq -c
+
+# User-Agent の上位（攻撃ツール名が出ることがある）
+jq -r '.request.headers["User-Agent"][0] // "-"' /tmp/access.jsonl | sort | uniq -c | sort -rn | head
+
+rm /tmp/access.jsonl   # IP アドレスを含むので、調べ終わったら消す
+```
+
+`jq` の時刻は UTC です。
+
+### IP アドレスの遮断
+
+レート制限を超えたリクエストは 429 を返すだけで、アプリへの負荷は小さく済みます。それでも同じ IP アドレスから続く場合は、ファイアウォールで遮断します。Docker が公開したポートへの通信は、`INPUT` チェーンや ufw を通らないため、`DOCKER-USER` チェーンに追加します。
+
+```bash
+sudo iptables -I DOCKER-USER -s 198.51.100.1 -j DROP        # 遮断
+sudo iptables -L DOCKER-USER -n --line-numbers              # 確認
+sudo iptables -D DOCKER-USER -s 198.51.100.1 -j DROP        # 解除
+```
+
+この設定はサーバーを再起動すると消えます。攻撃は一時的なことがほとんどなので、通常はこれで十分です。回線を埋めるほどの大規模な攻撃は、サーバー1台では防げません。独自ドメインを使う場合は、Cloudflare などを前に置くことを検討してください（「補足」のレート制限の注意も参照）。
+
+### SSH
+
+SSH へのログインの試行は、アプリではなく Ubuntu のログに残ります。Oracle の Ubuntu イメージは鍵でしかログインできないため、パスワードの総当たりが成功する心配はありません。
+
+```bash
+sudo journalctl -u ssh --since yesterday | grep -c "Invalid user"   # 存在しないユーザーでの試行の件数
+```
+
+## 9. 独自ドメインへの切り替え
 
 1. ドメインの DNS に、サーバーの IP アドレスを指す A レコードを追加します（例: `api.example.com`）。
 2. `.env` の `SERVER_NAME` と `APP_URL` を新しいホスト名に変えます。

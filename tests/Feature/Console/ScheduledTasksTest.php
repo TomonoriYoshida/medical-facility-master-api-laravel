@@ -43,6 +43,15 @@ class ScheduledTasksTest extends TestCase
         $this->assertSame('Asia/Tokyo', $event->timezone);
     }
 
+    public function test_access_log_check_is_scheduled_after_the_day_it_reads_is_over(): void
+    {
+        $event = $this->findEvent('access-log:check');
+
+        $this->assertNotNull($event);
+        $this->assertSame('15 0 * * *', $event->expression);
+        $this->assertSame('Asia/Tokyo', $event->timezone);
+    }
+
     private function findEvent(string $commandName): ?object
     {
         $schedule = app(Schedule::class);

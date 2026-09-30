@@ -37,3 +37,9 @@ Schedule::command('rhb:status')
     ->timezone('Asia/Tokyo')
     ->pingOnSuccessIf(filled($statusHealthcheckUrl), (string) $statusHealthcheckUrl)
     ->pingOnFailureIf(filled($statusHealthcheckUrl), "{$statusHealthcheckUrl}/fail");
+
+// Yesterday's access log, read once the day is over; alerts through the log
+// when the traffic looks like an attack (see config/api.php).
+Schedule::command('access-log:check')
+    ->dailyAt('00:15')
+    ->timezone('Asia/Tokyo');

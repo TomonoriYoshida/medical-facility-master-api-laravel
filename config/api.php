@@ -30,4 +30,27 @@ return [
 
     'export_downloads_per_hour' => (int) env('EXPORT_DOWNLOADS_PER_HOUR', 30),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Access Log Check
+    |--------------------------------------------------------------------------
+    |
+    | access-log:check reads the web server's access log (Caddy's JSON lines,
+    | including rotated .gz files) every morning and alerts when the previous
+    | day looks like an attack: many rate-limited (429) responses, many
+    | not-found (404) responses as a vulnerability scanner produces, or one
+    | IP sending far more requests than any visitor does. Syncing the whole
+    | country page by page takes ~2,250 requests, under the per-IP threshold.
+    |
+    */
+
+    'access_log' => [
+        'path' => env('ACCESS_LOG_PATH', storage_path('logs/access.log')),
+        'alert_thresholds' => [
+            'rate_limited' => (int) env('ACCESS_ALERT_RATE_LIMITED', 50),
+            'not_found' => (int) env('ACCESS_ALERT_NOT_FOUND', 200),
+            'requests_per_ip' => (int) env('ACCESS_ALERT_REQUESTS_PER_IP', 3000),
+        ],
+    ],
+
 ];
