@@ -127,6 +127,14 @@ curl "https://203-0-113-1.sslip.io/api/v1/medical-facilities?per_page=1"
 
 証明書が取得できない場合は `docker compose logs app` を確認します。よくある原因は、ポート 80 / 443 が閉じていること（「1. サーバーの準備」のセキュリティ・リストと iptables）です。
 
+### デモ用フロントエンドとの接続
+
+[medical-facility-frontend](https://github.com/TomonoriYoshida/medical-facility-frontend)（GitHub Pages）は、ビルド時に API のオリジンを埋め込みます。未設定のあいだは「API は公開準備中」と表示し、API を呼び出しません。
+
+1. フロントエンドのリポジトリの Settings → Secrets and variables → Actions → Variables で、リポジトリ変数 `API_ORIGIN` に `https://<SERVER_NAME>` を設定します（末尾の `/` と `/api` は付けない）。
+2. 変数を変えただけではデプロイされないため、Actions の「Deploy to GitHub Pages」を「Run workflow」で実行します。
+3. 公開されたサイトで検索できることを確認します。API は CORS ですべてのオリジンを許可しているため（`config/cors.php`）、API 側の設定は不要です。
+
 ## 3. 更新のデプロイ
 
 ```bash
@@ -207,6 +215,7 @@ docker compose exec app php artisan rhb:prune                   # 確認のう�
 1. ドメインの DNS に、サーバーの IP アドレスを指す A レコードを追加します（例: `api.example.com`）。
 2. `.env` の `SERVER_NAME` と `APP_URL` を新しいホスト名に変えます。
 3. `docker compose up -d` を実行します。Caddy が新しいホスト名で証明書を取得します。
+4. フロントエンドの `API_ORIGIN` を新しいホスト名に変え、ワークフローを実行し直します（「デモ用フロントエンドとの接続」）。
 
 ## 補足
 
