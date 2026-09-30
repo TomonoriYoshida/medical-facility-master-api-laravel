@@ -1,2 +1,4 @@
+# The JSON API is for programs, not search results (the demo site's About
+# page links to example calls). The API docs under /docs/api stay crawlable.
 User-agent: *
-Disallow:
+Disallow: /api/
