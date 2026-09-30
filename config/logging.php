@@ -1,5 +1,6 @@
 <?php
 
+use App\Logging\CreateAlertLogger;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -88,6 +89,17 @@ return [
             'emoji' => env('LOG_SLACK_EMOJI', ':boom:'),
             'level' => env('LOG_LEVEL', 'critical'),
             'replace_placeholders' => true,
+        ],
+
+        // Errors posted to Slack or Discord (append /slack to a Discord
+        // webhook URL); does nothing while LOG_ALERT_WEBHOOK_URL is unset.
+        'alert' => [
+            'driver' => 'custom',
+            'via' => CreateAlertLogger::class,
+            'url' => env('LOG_ALERT_WEBHOOK_URL'),
+            'username' => env('APP_NAME', 'Laravel'),
+            'level' => env('LOG_ALERT_LEVEL', 'error'),
+            'dedup_seconds' => env('LOG_ALERT_DEDUP_SECONDS', 3600),
         ],
 
         'papertrail' => [

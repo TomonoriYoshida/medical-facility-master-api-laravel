@@ -13,6 +13,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
@@ -79,7 +80,7 @@ class DownloadRhbDatasets extends Command
         try {
             $html = $this->fetch($meta['index_url'])->throw()->body();
         } catch (Throwable $e) {
-            $this->components->error("{$meta['label']}: インデックスページの取得に失敗しました ({$e->getMessage()})");
+            $this->reportFailure("{$meta['label']}: インデックスページの取得に失敗しました", $e);
 
             return false;
         }
@@ -90,7 +91,7 @@ class DownloadRhbDatasets extends Command
         try {
             $links = app($meta['resolver'])->resolve($html, $meta['base_url']);
         } catch (Throwable $e) {
-            $this->components->error("{$meta['label']}: 一覧ページの解析に失敗しました ({$e->getMessage()})");
+            $this->reportFailure("{$meta['label']}: 一覧ページの解析に失敗しました", $e);
 
             return false;
         }
@@ -104,7 +105,7 @@ class DownloadRhbDatasets extends Command
 
         foreach ($this->scope->categories() as $category) {
             if (! in_array($category, $resolvedCategories, true)) {
-                $this->components->error("{$meta['label']}: {$category->name} のリンクが見つかりません");
+                $this->reportFailure("{$meta['label']}: {$category->name} のリンクが見つかりません");
                 $hasFailure = true;
             }
         }
@@ -155,7 +156,7 @@ class DownloadRhbDatasets extends Command
 
             return true;
         } catch (Throwable $e) {
-            $this->components->error("{$label}: ダウンロードに失敗しました ({$e->getMessage()})");
+            $this->reportFailure("{$label}: ダウンロードに失敗しました", $e);
 
             return false;
         }
@@ -191,6 +192,20 @@ class DownloadRhbDatasets extends Command
             "{$meta['label']} {$link->category->name}",
             "<fg=green>ダウンロード完了 ({$link->filename})</>",
         );
+    }
+
+    /**
+     * The scheduler discards a command's console output, so each failure is
+     * also logged: otherwise a failed run would say nothing about which
+     * bureau failed or why. The bureau stays in the message (not only in the
+     * context) so the alert channel doesn't merge failures of different
+     * bureaus into one notification.
+     */
+    private function reportFailure(string $message, ?Throwable $e = null): void
+    {
+        $this->components->error($e === null ? $message : "{$message} ({$e->getMessage()})");
+
+        Log::error("rhb:download: {$message}", $e === null ? [] : ['error' => $e->getMessage()]);
     }
 
     private function fetch(string $url): Response

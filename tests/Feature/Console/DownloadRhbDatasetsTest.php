@@ -12,6 +12,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -165,6 +166,24 @@ class DownloadRhbDatasetsTest extends TestCase
 
         $this->assertFalse(RhbDatasetDownload::where('bureau_code', RhbBureau::Hokkaido)->exists());
         $this->assertTrue(RhbDatasetDownload::where('bureau_code', RhbBureau::Tohoku)->exists());
+    }
+
+    public function test_each_failure_is_logged_with_its_bureau_because_the_scheduler_discards_console_output(): void
+    {
+        Storage::fake('local');
+        Log::spy();
+        $this->fakeHttp(
+            $this->fixture('rhb-hokkaido-index.html'),
+            failingUrls: ['https://kouseikyoku.mhlw.go.jp/hokkaido/000499343.xlsx'],
+        );
+
+        $this->artisan('rhb:download', ['--bureau' => ['hokkaido']])->assertExitCode(1);
+
+        Log::shouldHaveReceived('error')
+            ->once()
+            ->withArgs(fn (string $message, array $context): bool => str_starts_with($message, 'rhb:download: 北海道厚生局 ')
+                && str_ends_with($message, ': ダウンロードに失敗しました')
+                && isset($context['error']));
     }
 
     public function test_a_category_missing_from_the_index_page_is_reported_as_a_failure(): void

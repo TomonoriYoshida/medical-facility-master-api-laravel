@@ -5,6 +5,10 @@
 # storage-app volume because rhb:download (run by the scheduler) saves each
 # dataset under storage/app and records that path, and the queued import job
 # (run by the worker) reads the file back from the same path.
+#
+# storage/logs is a volume too, so the logs outlive the containers (which
+# every deploy recreates): Laravel's daily files from all three services,
+# the app's access log, and the alert channel's deduplication record.
 
 x-app: &app
     build: .
@@ -13,6 +17,7 @@ x-app: &app
     env_file: .env
     volumes:
         - 'storage-app:/app/storage/app'
+        - 'storage-logs:/app/storage/logs'
     depends_on:
         mysql:
             condition: service_healthy
@@ -30,12 +35,23 @@ services:
             # with an automatic Let's Encrypt certificate; ":80" serves plain
             # HTTP only.
             SERVER_NAME: '${SERVER_NAME:?SERVER_NAME must be set in .env}'
+            # Access log (JSON, one file per day, kept 14 days). Caddy
+            # redacts the Cookie and Authorization headers by default.
+            CADDY_SERVER_EXTRA_DIRECTIVES: |
+                log {
+                    output file /app/storage/logs/access.log {
+                        roll_interval 24h
+                        roll_keep_for 336h
+                    }
+                    format json
+                }
         ports:
             - '80:80'
             - '443:443'
             - '443:443/udp'
         volumes:
             - 'storage-app:/app/storage/app'
+            - 'storage-logs:/app/storage/logs'
             - 'caddy-data:/data/caddy'
             - 'caddy-config:/config/caddy'
 
@@ -81,6 +97,7 @@ services:
 
 volumes:
     storage-app:
+    storage-logs:
     caddy-data:
     caddy-config:
     mysql-data:

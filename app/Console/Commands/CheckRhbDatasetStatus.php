@@ -7,6 +7,7 @@ use App\Services\Rhb\RhbScope;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Checks that every bureau/category's current data made it all the way into
@@ -27,6 +28,7 @@ class CheckRhbDatasetStatus extends Command
 
         $rows = [];
         $problemCount = 0;
+        $problemSummaries = [];
 
         foreach ($scope->bureaus() as $meta) {
             foreach ($scope->categories() as $category) {
@@ -51,6 +53,10 @@ class CheckRhbDatasetStatus extends Command
 
                 $problemCount += count($problems);
 
+                if ($problems !== []) {
+                    $problemSummaries[] = "{$meta['label']} {$category->name}: ".implode(' / ', $problems);
+                }
+
                 $rows[] = [
                     $meta['label'],
                     $category->name,
@@ -64,6 +70,10 @@ class CheckRhbDatasetStatus extends Command
 
         if ($problemCount > 0) {
             $this->components->error("{$problemCount}件の問題があります。");
+
+            // The scheduler discards this table, so the log is where the
+            // reason behind a failed healthcheck ping can be found.
+            Log::error("rhb:status: {$problemCount}件の問題があります。", ['problems' => $problemSummaries]);
 
             return Command::FAILURE;
         }
