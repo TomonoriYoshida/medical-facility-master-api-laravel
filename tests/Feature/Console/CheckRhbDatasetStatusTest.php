@@ -7,6 +7,7 @@ use App\Enums\RhbCategory;
 use App\Models\RhbDatasetDownload;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 class CheckRhbDatasetStatusTest extends TestCase
@@ -56,6 +57,21 @@ class CheckRhbDatasetStatusTest extends TestCase
             ->expectsOutputToContain('未取得')
             ->expectsOutputToContain('1件の問題があります')
             ->assertExitCode(1);
+    }
+
+    public function test_the_problems_are_logged_because_the_scheduler_discards_the_table(): void
+    {
+        $this->createImportedDownloadsForEveryDataset();
+        RhbDatasetDownload::where('bureau_code', RhbBureau::Kinki)
+            ->where('category', RhbCategory::Pharmacy)
+            ->delete();
+        Log::spy();
+
+        $this->artisan('rhb:status')->assertExitCode(1);
+
+        Log::shouldHaveReceived('error')
+            ->once()
+            ->with('rhb:status: 1件の問題があります。', ['problems' => ['近畿厚生局 Pharmacy: 未取得']]);
     }
 
     public function test_a_current_download_that_is_not_imported_is_a_problem(): void

@@ -31,7 +31,7 @@ scheduler は毎日（日本時間）次の順に実行します。
 
 - **HTTPS**: `SERVER_NAME` にホスト名を設定すると、Caddy が Let's Encrypt の証明書を自動で取得・更新します。独自ドメインがなくても、[sslip.io](https://sslip.io/)（`203-0-113-1.sslip.io` のように、IP アドレスを含むホスト名がその IP に解決される無料サービス）で HTTPS にできます。
 - **ストレージ**: `rhb:download`（scheduler）が保存したファイルを取込ジョブ（worker）が読むため、`storage/app` は両コンテナで共有するボリュームにしています。
-- **ログ**: すべて標準エラー出力に出します。`docker compose logs` で確認でき、コンテナごとに 10MB × 5 世代でローテーションします。
+- **ログ**: アプリのログとアクセスログを、ボリューム（`storage-logs`）上の日ごとのファイルに14日分残します。エラーは Discord / Slack に通知できます（「7. ログ」）。
 
 ## 1. サーバーの準備
 
@@ -174,7 +174,7 @@ gunzip -c ~/backups/mf-2026-10-01.sql.gz | docker compose exec -T mysql sh -c 'e
 
 ```bash
 docker compose ps                              # 各コンテナの状態
-docker compose logs -f worker                  # 取込ジョブのログ
+docker compose logs -f worker                  # 取込ジョブのログ（直近。過去の分は「7. ログ」）
 docker compose exec app php artisan rhb:status     # 局・カテゴリごとの取込状況
 docker compose exec app php artisan queue:failed   # 失敗したジョブ
 docker compose exec app php artisan rhb:import --force --wait   # 取込をやり直す
@@ -208,9 +208,46 @@ docker compose exec app php artisan rhb:prune                   # 確認のう�
    docker compose exec scheduler php artisan schedule:test --name=rhb:status
    ```
 
-通知が来たら、`rhb:status` と `docker compose logs worker` / `docker compose logs scheduler` で原因を確認します。取込ジョブの失敗は翌日の `rhb:import` で自動的に再試行されますが、一覧ページの構造の変更はリゾルバ（`app/Services/Rhb/Download/`）の修正が必要です。
+通知が来たら、`rhb:status` と、アプリのログ（「7. ログ」）で原因を確認します。取得の失敗はどの局で何が起きたか、`rhb:status` の失敗はどの局・カテゴリに問題があるかがログに残ります（scheduler から実行したコマンドの画面出力は残らないため）。取込ジョブの失敗は翌日の `rhb:import` で自動的に再試行されますが、一覧ページの構造の変更はリゾルバ（`app/Services/Rhb/Download/`）の修正が必要です。
 
-## 7. 独自ドメインへの切り替え
+## 7. ログ
+
+| ログ | 場所 | 内容 |
+|---|---|---|
+| アプリのログ | `storage/logs/laravel-YYYY-MM-DD.log` | API のエラー、取込・取得・状態確認の結果（app / worker / scheduler の3つが同じファイルに書く） |
+| アクセスログ | `storage/logs/access.log`（日ごとに `access-<日時>.log` へ切り替え） | すべてのリクエスト（JSON。IP アドレス・URL・ステータス・応答時間など） |
+
+- どちらもボリューム `storage-logs` にあり、コンテナを作り直す更新のデプロイでも消えません。14日より古いものは自動で削除します（アプリのログは `LOG_DAILY_DAYS`）。
+- アクセスログには利用者の IP アドレスが含まれるため、保存期間を14日にしています。`Cookie` と `Authorization` ヘッダーは Caddy が伏せて記録します。
+- `docker compose logs` にも同じアプリのログが出ますが、こちらはコンテナを作り直すと消えます。
+
+```bash
+docker compose exec app sh -c 'tail -n 100 storage/logs/laravel-$(date +%F).log'   # 今日のアプリのログ
+docker compose exec app sh -c 'grep -h "\.ERROR" storage/logs/laravel-*.log'      # 14日分のエラー
+docker compose exec app tail -f storage/logs/access.log                          # アクセスログを流し見る
+```
+
+アプリのログの日付は UTC です（`laravel-2026-10-01.log` は日本時間の 10/1 09:00 〜 10/2 09:00）。
+
+### エラーの通知
+
+`LOG_ALERT_WEBHOOK_URL` に Webhook の URL を設定すると、エラー（`ERROR` 以上）を Discord または Slack に送ります。API のリクエスト中のエラーも、毎日の処理の失敗も送ります（404 や 422、429 は送りません）。
+
+- 同じエラーは1時間に1回だけ送ります（`LOG_ALERT_DEDUP_SECONDS`）。同じかどうかは、例外の種類と発生した場所（プロジェクト内のファイルと行）で判断します。データベースの停止などで同じエラーが続いても、通知が大量に届くことはありません。
+- 通知は要約です。例外の全文（スタックトレースなど）は、アプリのログで確認します。
+- Webhook に送れなかった場合も、アプリの動作やログへの記録には影響しません。
+
+設定手順（Discord の場合）:
+
+1. 通知を受けるチャンネルの「チャンネルの編集」→「連携サービス」→「ウェブフック」で、ウェブフックを作り、URL をコピーします。
+2. `.env` の `LOG_ALERT_WEBHOOK_URL` に、その URL の末尾に `/slack` を付けたものを設定します（例: `https://discord.com/api/webhooks/123/abc/slack`。Discord が Slack と同じ形式で受け付けます）。Slack の場合は、Incoming Webhook の URL をそのまま設定します。
+3. `docker compose up -d` で反映し、通知が届くことを確認します。
+
+   ```bash
+   docker compose exec app php artisan tinker --execute 'Log::error("通知のテスト");'
+   ```
+
+## 8. 独自ドメインへの切り替え
 
 1. ドメインの DNS に、サーバーの IP アドレスを指す A レコードを追加します（例: `api.example.com`）。
 2. `.env` の `SERVER_NAME` と `APP_URL` を新しいホスト名に変えます。
