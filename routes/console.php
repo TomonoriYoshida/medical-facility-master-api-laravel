@@ -59,6 +59,13 @@ Schedule::command('rhb:status')
     ->pingOnSuccessIf(filled($statusHealthcheckUrl), (string) $statusHealthcheckUrl)
     ->pingOnFailureIf(filled($statusHealthcheckUrl), "{$statusHealthcheckUrl}/fail");
 
+// The database cache store keeps expired rows until their key is read again,
+// which per-query stats entries and per-IP rate limiter counters rarely are.
+Schedule::command('cache:prune-expired')
+    ->dailyAt('03:00')
+    ->timezone('Asia/Tokyo')
+    ->withoutOverlapping();
+
 // Yesterday's access log, read once the day is over; alerts through the log
 // when the traffic looks like an attack (see config/api.php).
 Schedule::command('access-log:check')

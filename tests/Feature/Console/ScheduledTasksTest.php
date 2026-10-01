@@ -61,6 +61,15 @@ class ScheduledTasksTest extends TestCase
         $this->assertSame('Asia/Tokyo', $event->timezone);
     }
 
+    public function test_expired_cache_rows_are_pruned_daily(): void
+    {
+        $event = $this->findEvent('cache:prune-expired');
+
+        $this->assertNotNull($event);
+        $this->assertSame('0 3 * * *', $event->expression);
+        $this->assertSame('Asia/Tokyo', $event->timezone);
+    }
+
     private function findEvent(string $commandName): ?object
     {
         $schedule = app(Schedule::class);
