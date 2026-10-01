@@ -42,7 +42,7 @@ medical_facilities (1) ──< (多) medical_facility_events
 | `address_normalized` | string | ✓ | `address`を`App\Services\Text\AddressNormalizer`で正規化した検索用カラム。`MedicalFacilityObserver`が保存時に自動計算するため`#[Fillable]`には含まれない |
 | `latitude` | decimal(10,6) | ✓ | 所在地座標（緯度）。地方厚生局データには含まれないため、`facilities:geocode`が住所からアドレス・ベース・レジストリで求める（下記「ジオコーディング」）。求められなかった施設・未処理の施設はnull。住所が変わると`MedicalFacilityObserver`がnullに戻す |
 | `longitude` | decimal(10,6) | ✓ | 所在地座標（経度）。同上。`(latitude, longitude)`の複合インデックスで近隣検索の範囲を絞る |
-| `geocode_level` | unsignedTinyInteger | ✓ | `App\Enums\GeocodeLevel` をcast。座標の精度。1:住居（〇番〇号） 2:街区（〇番） 3:地番（〇番地〇） 4:地番（枝番なし。同じ地番の別の枝番の座標） 5:町丁目（代表点）。座標がない施設はnull |
+| `geocode_level` | unsignedTinyInteger | ✓ | `App\Enums\GeocodeLevel` をcast。座標の精度。1:住居（〇番〇号） 2:街区（〇番） 3:地番（〇番地〇） 4:地番（枝番なし。同じ地番の別の枝番の座標） 5:町丁目（代表点） 6:医療情報ネット（厚生労働省の座標。下記「ジオコーディング」）。座標がない施設はnull |
 | `geocoded_address` | string | ✓ | 座標を求めたときの`address`。`address`と異なる施設（新規・移転）だけを`facilities:geocode`が処理する。座標を求められなかった施設にも入れ、毎日の再試行を防ぐ（`--all`で再試行） |
 | `phone_number` | string | ✓ | 電話番号。区切り文字を`0X-XXXX-XXXX`形式のハイフンに正規化して保持（括弧区切り・連続ハイフンのタイプミスのみ補正、桁の欠落など元データから正しい形を機械的に復元できないものはそのまま保持） |
 | `founder_name` | string | ✓ | 開設者（法人名＋代表者名等、原本の表記をそのまま保持）。個人名を含むことが多いため、**APIでは返さない** |
@@ -95,6 +95,23 @@ WHERE e.event_type = 1 -- Created
 | `name_kana` | string | 同カナ |
 
 CSVを更新してシーダーを再実行したあとは、`facilities:assign-municipalities`で既存施設に反映する（キューワーカーの再起動も同コマンドが行う）。出典はデジタル庁（CC BY 4.0）で、APIの`meta.attribution.address_source`に表示している。
+
+## `medical_info_net_locations`
+
+厚生労働省「医療情報ネット」のオープンデータ（年2回、6月・12月に公開。PDL1.0）の施設の座標。`medical-info-net:import`が最新の版で丸ごと入れ替える（取り込み済みの版は飛ばすので、毎月2日に確認する）。範囲外（`RHB_PREFECTURES`）の都道府県と、座標が「0.0」の施設（元データの約8%）は入れない。医療情報ネットの施設は厚生局データと共通のコードを持たないため、照合用のキーで突き合わせる。
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| `id` | bigint (PK) | 内部主キー |
+| `institution_type` | unsignedTinyInteger | `App\Enums\InstitutionType`。病院・診療所・歯科診療所・薬局の各ファイルに対応 |
+| `municipality_code` | char(5) | 都道府県コード＋市区町村コード（元データの3桁）。`medical_facilities.municipality_code`と同じ体系 |
+| `name_key` | string | `App\Services\Address\FacilityMatchingKeys::name()`。正規化した名称から先頭の法人名（「医療法人社団明生会」など）を除いたもの |
+| `address_key` | string | `FacilityMatchingKeys::address()`。都道府県名と、番地より後ろ（建物名・階）を除き、番地を「1-2-3」の形にした所在地 |
+| `latitude` / `longitude` | decimal(10,6) | 元データの所在地座標 |
+| `published_on` | date | 元データの公開時点（例: 2026-06-01） |
+| `created_at` / `updated_at` | datetime | |
+
+インデックス: `(municipality_code, institution_type)`。取り込むと、座標が町丁目・医療情報ネット・なしの施設の`geocoded_address`を空にし、次の`facilities:geocode`で付け直す（`updated_at`は座標が実際に変わった施設だけ動く）。
 
 ## `rhb_dataset_downloads`
 
@@ -174,6 +191,10 @@ Observerは`name`/`address`が変わった時しか正規化カラムを再計�
    - 京都市の通り名（「高倉通姉小路下ル東片町」）。そのままでは一致しないときだけ、「上ル・下ル・東入・西入」までを外して照合し直す
 3. `BanchiParser`で番地の数字を読む。「6-5」が街区・住居か地番・枝番かは書き方では決まらないため、町字の住居表示フラグで決める
 4. 住居表示の地区は住居 → 街区、それ以外は地番 → 同じ地番の別の枝番、の順に座標を探し、なければ町字の代表点を使う。小字には代表点がほとんどない（愛知県で53,566件中724件）ため、小字に代表点がなければ親の大字（町字IDの上4桁＋`000`）の代表点を使う
+
+5. ABRで町丁目まで（または何も）求められなかった施設は、`MedicalInfoNetLocator`が医療情報ネットの座標で置き換える。種別・市区町村が同じ医療情報ネットの施設のうち、名称キーが一致するもの（複数あれば住所キーでも絞る）、なければ住所キーが一致して名称も似ているものが、ちょうど1件のときだけ使う。さらに、町丁目の代表点から2km以内（座標がない施設は、その市区町村の住居・街区レベルの施設の平均位置から30km以内）でなければ使わない。番地レベル（1〜4）の施設には使わない
+
+**医療情報ネットの座標の実測**（2026-10-01、指定中の223,291件）: 1件に照合できたのは178,430件（79.9%）。ABRで番地レベルの施設と比べると、差の中央値は住居14m・街区40m・地番10m、90%点は49〜204mで、医療情報ネットの座標はほぼ番地単位の精度。一方で1km以上食い違う組（0.5〜1.9%）は、医療情報ネット側が外れている例のほうが多い（市区町村の中心からの距離で判定して、医療情報ネット側219件、ABR側107件。札幌市中央区の施設が約75km北にある例など）。そのため番地レベルではABRを優先し、医療情報ネットは町丁目以下の補完にだけ使う。組み込んだ結果（指定中の施設）: 番地レベル69.7%、医療情報ネット23.2%、町丁目6.4%、判定不能0.6%で、町丁目より細かい座標がある施設は69.7%から92.9%になった。医療情報ネットを使った施設を無作為に15件抜き出し、照合先の名称・住所がすべて同じ施設であることを確かめた。
 
 町字ID（`machiaza_id`）は市区町村の中でしか一意でないため、照合のキーには必ず市区町村コードを含める。
 

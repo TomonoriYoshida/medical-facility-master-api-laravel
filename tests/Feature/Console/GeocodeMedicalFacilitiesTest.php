@@ -3,8 +3,11 @@
 namespace Tests\Feature\Console;
 
 use App\Enums\GeocodeLevel;
+use App\Enums\InstitutionType;
 use App\Models\MedicalFacility;
+use App\Models\MedicalInfoNetLocation;
 use App\Models\Municipality;
+use App\Services\Address\FacilityMatchingKeys;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Http;
@@ -51,7 +54,7 @@ class GeocodeMedicalFacilitiesTest extends TestCase
         ]);
 
         $this->artisan('facilities:geocode')
-            ->expectsOutputToContain('町丁目 1 / 判定不能 1')
+            ->expectsOutputToContain('町丁目 1 / 医療情報ネット 0 / 判定不能 1')
             ->assertExitCode(0);
 
         $facility->refresh();
@@ -66,6 +69,33 @@ class GeocodeMedicalFacilitiesTest extends TestCase
         $this->assertNull($unlocatable->latitude);
         $this->assertSame('千代田区存在しない町1', $unlocatable->geocoded_address);
         $this->assertSame('2026-01-01 00:00:00', $unlocatable->updated_at->toDateTimeString());
+    }
+
+    public function test_a_town_level_facility_uses_the_medical_info_net_coordinates(): void
+    {
+        $facility = MedicalFacility::factory()->create([
+            'prefecture_code' => '13',
+            'institution_type' => InstitutionType::Clinic,
+            'name' => '医療法人　内幸町クリニック',
+            'address' => '千代田区内幸町一丁目5番1号',
+        ]);
+        $keys = app(FacilityMatchingKeys::class);
+        MedicalInfoNetLocation::factory()->create([
+            'institution_type' => InstitutionType::Clinic,
+            'municipality_code' => '13101',
+            'name_key' => $keys->name('内幸町クリニック'),
+            'address_key' => $keys->address('東京都千代田区内幸町1-5-1'),
+            'latitude' => 35.671000,
+            'longitude' => 139.751000,
+        ]);
+
+        $this->artisan('facilities:geocode')
+            ->expectsOutputToContain('町丁目 0 / 医療情報ネット 1')
+            ->assertExitCode(0);
+
+        $facility->refresh();
+        $this->assertSame(GeocodeLevel::MedicalInfoNet, $facility->geocode_level);
+        $this->assertSame('35.671000', $facility->latitude);
     }
 
     public function test_facilities_already_geocoded_are_skipped_unless_all(): void
