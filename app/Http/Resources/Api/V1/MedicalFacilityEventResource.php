@@ -60,6 +60,8 @@ class MedicalFacilityEventResource extends JsonResource
             'origin' => $this->codeAndLabel($this->origin),
             /** 変化が載った公開データの日付（実際の開業・廃止・変更の日ではない） */
             'occurred_on' => $this->occurred_on->toDateString(),
+            /** この変化を検知した（公開データを取り込んだ）日時 */
+            'detected_at' => $this->created_at?->toJSON(),
             /** 過去に廃止された施設が再び掲載されたか（新規のときのみ） */
             'is_reopening' => $this->when(
                 $this->event_type === MedicalFacilityEventType::Created,

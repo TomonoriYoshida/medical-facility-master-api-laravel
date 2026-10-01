@@ -12,6 +12,7 @@ use App\Models\MedicalFacility;
 use App\Models\MedicalFacilityEvent;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Carbon;
 
 class MedicalFacilityEventController extends Controller
 {
@@ -23,6 +24,7 @@ class MedicalFacilityEventController extends Controller
      * 毎月の公開データを比較して見つかった、施設の新規・廃止・変更を新しい順に返します。
      * `occurred_on` は変化が載った公開データの日付で、実際の開業日・廃止日ではありません。
      * 取込を始めた時点のデータ（初回取込）と、取り込み直しによる差分（再処理）は含みません。
+     * 前回の確認以降に見つかった変化は、`detected_since` で取得してください。
      */
     public function index(MedicalFacilityEventIndexRequest $request): AnonymousResourceCollection
     {
@@ -33,6 +35,8 @@ class MedicalFacilityEventController extends Controller
             ->when($filters['event_type'] ?? null, fn ($query, $value) => $query->where('event_type', $value))
             ->when($filters['occurred_from'] ?? null, fn ($query, $date) => $query->where('occurred_on', '>=', $date))
             ->when($filters['occurred_to'] ?? null, fn ($query, $date) => $query->where('occurred_on', '<=', $date))
+            // created_at is stored in UTC; the given offset, if any, is honored.
+            ->when($filters['detected_since'] ?? null, fn ($query, $since) => $query->where('created_at', '>=', Carbon::parse($since)->utc()))
             ->when(
                 isset($filters['prefecture_code']) || isset($filters['institution_type']),
                 fn ($query) => $query->whereHas('medicalFacility', fn ($facilityQuery) => $facilityQuery
