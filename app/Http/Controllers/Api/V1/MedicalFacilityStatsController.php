@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\DepartmentBaseCategory;
 use App\Enums\FacilityStatsGrouping;
+use App\Http\Controllers\Api\V1\Concerns\BuildsMonthlyGroups;
 use App\Http\Controllers\Api\V1\Concerns\FiltersMedicalFacilities;
 use App\Http\Controllers\Api\V1\Concerns\ProvidesAttribution;
 use App\Http\Controllers\Controller;
@@ -11,12 +12,12 @@ use App\Http\Requests\Api\V1\MedicalFacilityStatsRequest;
 use App\Models\MedicalFacility;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class MedicalFacilityStatsController extends Controller
 {
+    use BuildsMonthlyGroups;
     use FiltersMedicalFacilities;
     use ProvidesAttribution;
 
@@ -89,21 +90,7 @@ class MedicalFacilityStatsController extends Controller
             ->groupBy('month')
             ->pluck('facilities', 'month');
 
-        $groups = [];
-        $month = Carbon::parse($from)->startOfMonth();
-        $last = Carbon::parse($to)->startOfMonth();
-
-        while ($month->lte($last)) {
-            $key = $month->format('Y-m');
-            $groups[] = [
-                'key' => $key,
-                'label' => $month->format('Y年n月'),
-                'count' => (int) ($counts[$key] ?? 0),
-            ];
-            $month->addMonth();
-        }
-
-        return $groups;
+        return $this->monthlyGroups($counts, $from, $to);
     }
 
     /**

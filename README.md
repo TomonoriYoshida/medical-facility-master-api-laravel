@@ -35,6 +35,7 @@
 | GET | `/api/v1/medical-facilities/{id}/events` | 施設の履歴（新規・廃止・変更） |
 | GET | `/api/v1/medical-facility-events` | 全国の変化の一覧（ページネーション付き） |
 | GET | `/api/v1/stats/facilities` | 施設数の集計（月・市区町村・診療科目ごと） |
+| GET | `/api/v1/stats/facility-events` | 新規・廃止の件数の集計（月・市区町村ごと） |
 | GET | `/api/v1/options` | 絞り込みの選択肢（都道府県・施設種別・診療科目など） |
 | GET | `/api/v1/exports` | 一括ダウンロードのファイル一覧（都道府県ごと・全体の CSV / JSON Lines） |
 
@@ -220,6 +221,19 @@ GET /api/v1/stats/facilities?group_by=month&designation_reason=新規&designated
 - **新規開業の数え方**: `designation_reason=新規` と指定年月日の期間を組み合わせます。保険医療機関の指定は6年ごとに更新されますが、指定年月日は最初の指定日のままです。
 - **診療科目**: 1つの施設が複数の診療科目に数えられるため、`count` の合計は `meta.total`（絞り込んだ施設数）と一致しません。
 - **キャッシュ**: データは1日1回しか変わらないため、結果をサーバー側で1時間キャッシュし、`Cache-Control: public, max-age=3600` を付けて返します。取込の直後は、最大1時間前の集計が返ることがあります。
+
+### 新規・廃止の集計
+
+変化の一覧と同じ記録（公開データ間で検知した新規・廃止）を、月・市区町村ごとに数えます。地域の開業と廃業の推移を比べるためのものです。
+
+```http
+GET /api/v1/stats/facility-events?group_by=month&event_type=2&occurred_from=2025-11-01&occurred_to=2026-10-31&prefecture_code=13
+```
+
+- **`event_type`**（必須）: 1（新規）または 2（廃止）。
+- **`group_by`**: `month`（変化が載った公開データの月。`occurred_from` / `occurred_to` が必須で60か月まで、変化のない月は0）、`municipality`（施設の市区町村。件数の多い順）。
+- **施設の絞り込み**: `prefecture_code`・`municipality_code`・`institution_type`・`department_category` は、施設の現在の内容で判定します。
+- 記録は運用を始めてから蓄積されるため、最初の1〜2か月は0件です。レスポンスの形とキャッシュは施設数の集計と同じです。
 
 ### 共通
 
