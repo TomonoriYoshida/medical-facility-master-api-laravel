@@ -90,6 +90,45 @@ class InsuredFacilityRecordMapperTest extends TestCase
         $this->assertSame(InstitutionType::DentalClinic, $mapped['institution_type']);
     }
 
+    public function test_every_department_of_a_dental_designation_is_dentistry(): void
+    {
+        // Real tokens from a dental list: 小歯 (小児歯科) and a bare 小 used to
+        // become Pediatrics, 口腔外科 Surgery.
+        $record = [
+            'serial' => 1,
+            'rows' => [
+                $this->row([
+                    0 => '1', 1 => '01,3000,0', 2 => 'テスト歯科',
+                    3 => '〒000－0000テスト住所', 4 => '011-000-0000',
+                    5 => '院長', 6 => '院長', 7 => '昭50. 1. 1', 8 => '歯　小歯　矯歯', 9 => '診療所',
+                ]),
+                $this->row([8 => '小　口腔外科']),
+            ],
+        ];
+
+        $mapped = (new InsuredFacilityRecordMapper)->map($record, RhbCategory::Dental, RhbBureau::Hokkaido, '01');
+
+        $this->assertSame([DepartmentBaseCategory::Dentistry], $mapped['department_categories']);
+    }
+
+    public function test_a_dental_record_without_departments_has_none(): void
+    {
+        $record = [
+            'serial' => 1,
+            'rows' => [
+                $this->row([
+                    0 => '1', 1 => '01,3000,0', 2 => 'テスト歯科',
+                    3 => '〒000－0000テスト住所', 4 => '011-000-0000',
+                    5 => '院長', 6 => '院長', 7 => '昭50. 1. 1', 9 => '診療所',
+                ]),
+            ],
+        ];
+
+        $mapped = (new InsuredFacilityRecordMapper)->map($record, RhbCategory::Dental, RhbBureau::Hokkaido, '01');
+
+        $this->assertSame([], $mapped['department_categories']);
+    }
+
     public function test_pharmacy_category_never_reads_column_i_even_if_present(): void
     {
         $record = [

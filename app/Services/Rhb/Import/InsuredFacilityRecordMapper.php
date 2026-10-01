@@ -2,6 +2,7 @@
 
 namespace App\Services\Rhb\Import;
 
+use App\Enums\DepartmentBaseCategory;
 use App\Enums\InstitutionType;
 use App\Enums\RhbBureau;
 use App\Enums\RhbCategory;
@@ -60,8 +61,26 @@ final class InsuredFacilityRecordMapper
             'designated_on' => $designation['designatedOn'],
             'designation_history' => $designation['history'],
             'bed_counts' => $bedAndDepartments['bedCounts'] === [] ? null : $bedAndDepartments['bedCounts'],
-            'department_categories' => $this->departmentCategoryClassifier->classify($bedAndDepartments['departmentTokens']),
+            'department_categories' => $this->departmentCategories($category, $bedAndDepartments['departmentTokens']),
         ];
+    }
+
+    /**
+     * A dental designation (歯科) may only list dental departments (歯科,
+     * 小児歯科, 矯正歯科, 歯科口腔外科), so every token in a dental list is
+     * Dentistry. Classifying them one by one sent the common abbreviation
+     * "小歯" (小児歯科) to Pediatrics through the "小" fallback.
+     *
+     * @param  list<string>  $tokens
+     * @return list<DepartmentBaseCategory>
+     */
+    private function departmentCategories(RhbCategory $category, array $tokens): array
+    {
+        if ($category === RhbCategory::Dental) {
+            return $tokens === [] ? [] : [DepartmentBaseCategory::Dentistry];
+        }
+
+        return $this->departmentCategoryClassifier->classify($tokens);
     }
 
     /**

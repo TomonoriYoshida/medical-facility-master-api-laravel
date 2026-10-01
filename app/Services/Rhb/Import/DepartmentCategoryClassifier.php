@@ -73,6 +73,10 @@ final class DepartmentCategoryClassifier
         '脳内' => DepartmentBaseCategory::Neurology,
         '神内' => DepartmentBaseCategory::Neurology,
         '歯外' => DepartmentBaseCategory::Dentistry,
+        // 小児歯科 and 口腔外科 are dental, but would otherwise fall through to
+        // the "小" (Pediatrics) and "外" (Surgery) fallbacks below.
+        '小歯' => DepartmentBaseCategory::Dentistry,
+        '口腔' => DepartmentBaseCategory::Dentistry,
         '形外' => DepartmentBaseCategory::PlasticSurgery,
         '整外' => DepartmentBaseCategory::Surgery,
         'リハ' => DepartmentBaseCategory::Rehabilitation,
