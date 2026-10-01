@@ -150,6 +150,18 @@ docker compose up -d
 - worker は、実行中のジョブが終わるまで最大10分待ってから停止します（`stop_grace_period`）。取込の時間帯（05:00〜06:00 頃）を避けると、すぐに切り替わります。
 - 設定（config）とルートのキャッシュは、コンテナの起動時に作り直されます。`.env` を変えた場合も `docker compose up -d` で反映されます。
 
+### 市区町村マスタの投入・更新
+
+市区町村コードの機能を含む版へ初めて更新するとき、および `database/seeders/data/municipalities.csv` を更新した版をデプロイしたときは、`migrate` の後に次を実行します。
+
+```bash
+docker compose run --rm app php artisan db:seed --class=MunicipalitySeeder --force
+docker compose run --rm app php artisan facilities:assign-municipalities
+docker compose run --rm app php artisan rhb:export --force
+```
+
+- `facilities:assign-municipalities` は施設の `updated_at` を変えないため、毎日の `rhb:export` は「データが変わっていない」と判断して一括ダウンロードを作り直しません。`--force` で作り直して、ファイルにも市区町村の列を反映させます。
+
 ## 4. バックアップ
 
 `medical_facility_events`（開業・廃止などの変更履歴）は、取込を重ねて記録していくデータです。各局の公開データから作り直せないので、定期的にバックアップします。
