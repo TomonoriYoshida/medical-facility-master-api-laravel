@@ -30,6 +30,13 @@ Schedule::command('medical-info-net:import')
     ->timezone('Asia/Tokyo')
     ->withoutOverlapping();
 
+// The 住民基本台帳人口 (as of January 1) is published once a year, around
+// summer; an edition already imported is skipped, so checking monthly is enough.
+Schedule::command('population:import')
+    ->monthlyOn(3, '04:40')
+    ->timezone('Asia/Tokyo')
+    ->withoutOverlapping();
+
 // Locates new and moved facilities; after the import (05:30, ~20 minutes)
 // and before rhb:export, so the day's files carry the locations.
 Schedule::command('facilities:geocode')

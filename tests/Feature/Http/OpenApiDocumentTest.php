@@ -60,10 +60,13 @@ class OpenApiDocumentTest extends TestCase
     {
         $schema = $this->document()['paths']['/v1/stats/facilities']['get']['responses']['200']['content']['application/json']['schema']['properties'];
 
-        $this->assertSame(['key', 'label', 'count'], $schema['data']['items']['required']);
+        $this->assertSame(['key', 'label', 'count', 'population', 'count_per_10k'], $schema['data']['items']['required']);
         $this->assertSame(['integer', 'string', 'null'], $schema['data']['items']['properties']['key']['type']);
         $this->assertSame('integer', $schema['data']['items']['properties']['count']['type']);
+        $this->assertSame(['integer', 'null'], $schema['data']['items']['properties']['population']['type']);
+        $this->assertSame(['number', 'null'], $schema['data']['items']['properties']['count_per_10k']['type']);
         $this->assertSame('integer', $schema['meta']['properties']['total']['type']);
+        $this->assertSame(['string', 'null'], $schema['meta']['properties']['population_as_of']['type']);
     }
 
     public function test_event_stats_groups_have_their_item_shape(): void

@@ -220,6 +220,7 @@ GET /api/v1/stats/facilities?group_by=month&designation_reason=新規&designated
 - **`group_by`**: `month`（指定年月日の月。`designated_from` / `designated_to` が必須で60か月まで、施設のない月は0）、`municipality`（市区町村コード。判定できない施設は `key` が null）、`department_category`（診療科目のコード）。`month` 以外は件数の多い順です。
 - **新規開業の数え方**: `designation_reason=新規` と指定年月日の期間を組み合わせます。保険医療機関の指定は6年ごとに更新されますが、指定年月日は最初の指定日のままです。
 - **診療科目**: 1つの施設が複数の診療科目に数えられるため、`count` の合計は `meta.total`（絞り込んだ施設数）と一致しません。
+- **人口あたりの件数**: `municipality` のときは、各市区町村の人口（総務省「住民基本台帳に基づく人口」、`meta.population_as_of` 時点）と、人口1万人あたりの件数（`count_per_10k`）も返します。住民登録上の人口のため、昼間人口の多い都心部（千代田区など）や人口の少ない町村では極端な値になります。ほかの `group_by` では null です。
 - **キャッシュ**: データは1日1回しか変わらないため、結果をサーバー側で1時間キャッシュし、`Cache-Control: public, max-age=3600` を付けて返します。取込の直後は、最大1時間前の集計が返ることがあります。
 
 ### 新規・廃止の集計
@@ -355,7 +356,7 @@ vendor/bin/sail php vendor/bin/phpstan analyse --memory-limit=1G   # 静的解�
 
 各局の出典URLは、すべてのレスポンスの `meta.attribution.sources` に含めています。
 
-市区町村（`municipality`）と座標（`location`）は、デジタル庁の[アドレス・ベース・レジストリ](https://catalog.registries.digital.go.jp/rc/dataset/)（CC BY 4.0）を加工して作成しています。出典は `meta.attribution.address_source` にあります。町丁目までしか求められない施設の座標は、厚生労働省の[医療情報ネットのオープンデータ](https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/newpage_43373.html)（PDL1.0）を加工して作成しています（`meta.attribution.medical_info_net_source`）。
+市区町村（`municipality`）と座標（`location`）は、デジタル庁の[アドレス・ベース・レジストリ](https://catalog.registries.digital.go.jp/rc/dataset/)（CC BY 4.0）を加工して作成しています。出典は `meta.attribution.address_source` にあります。町丁目までしか求められない施設の座標は、厚生労働省の[医療情報ネットのオープンデータ](https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/newpage_43373.html)（PDL1.0）を加工して作成しています（`meta.attribution.medical_info_net_source`）。集計APIの市区町村の人口（`population`）は、総務省の[住民基本台帳に基づく人口、人口動態及び世帯数](https://www.soumu.go.jp/main_sosiki/jichi_gyousei/daityo/jinkou_jinkoudoutai-setaisuu.html)（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.population_source`）。
 
 - **免責**: データの正確性・完全性は保証しません。最新かつ正確な情報は、各地方厚生局の公表資料を確認してください。
 - **個人名は提供しません**: 元データの開設者名・管理者名は個人名を含むため、APIでは返しません。

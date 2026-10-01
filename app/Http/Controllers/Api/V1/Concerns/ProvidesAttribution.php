@@ -35,6 +35,11 @@ trait ProvidesAttribution
                 'name' => '厚生労働省「医療情報ネット」のオープンデータ（所在地座標）を加工して作成',
                 'url' => 'https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/newpage_43373.html',
             ],
+            // 市区町村の人口の出典（総務省、政府標準利用規約・CC BY 4.0 互換）。集計APIの人口あたりの件数に使う。
+            'population_source' => [
+                'name' => '総務省「住民基本台帳に基づく人口、人口動態及び世帯数」（市区町村別）を加工して作成',
+                'url' => 'https://www.soumu.go.jp/main_sosiki/jichi_gyousei/daityo/jinkou_jinkoudoutai-setaisuu.html',
+            ],
             // The bureaus this installation actually draws from (RhbScope).
             'sources' => collect(app(RhbScope::class)->bureaus())
                 ->map(fn (array $bureau) => [

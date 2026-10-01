@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\Concerns\ProvidesAttribution;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\MedicalFacilityStatsRequest;
 use App\Models\MedicalFacility;
+use App\Models\MunicipalityPopulation;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
@@ -34,6 +35,10 @@ class MedicalFacilityStatsController extends Controller
      * - `month`: 期間内のすべての月を古い順に返します（施設がない月は0）。
      * - `municipality`: 施設数の多い順です。住所から市区町村を判定できない施設は `key`・`label` が null の1件にまとめます。
      * - `department_category`: 施設数の多い順です。1つの施設が複数の診療科目に数えられるため、`count` の合計は `meta.total` と一致しません。
+     *
+     * `municipality` のときは、各市区町村の人口（総務省「住民基本台帳に基づく人口」、`meta.population_as_of` 時点）と
+     * 人口1万人あたりの件数（`count_per_10k`）も返します。住民登録上の人口のため、昼間人口の多い都心部では高く出ます。
+     * ほかの `group_by` と、人口がわからない市区町村では null です。
      */
     public function __invoke(MedicalFacilityStatsRequest $request): JsonResponse
     {
@@ -42,22 +47,28 @@ class MedicalFacilityStatsController extends Controller
         $grouping = $request->grouping();
 
         $result = Cache::remember(
-            'medical-facility-stats:'.sha1((string) json_encode($filters)),
+            // v2: entries cached before the population fields lack them.
+            'medical-facility-stats:v2:'.sha1((string) json_encode($filters)),
             self::CACHE_SECONDS,
             function () use ($request, $filters, $grouping): array {
                 $query = $this->applyFilters(MedicalFacility::query(), $filters);
 
+                $groups = match ($grouping) {
+                    FacilityStatsGrouping::Month => $this->byMonth(
+                        $query,
+                        $request->string('designated_from')->toString(),
+                        $request->string('designated_to')->toString(),
+                    ),
+                    FacilityStatsGrouping::Municipality => $this->byMunicipality($query),
+                    FacilityStatsGrouping::DepartmentCategory => $this->byDepartmentCategory($query),
+                };
+
                 return [
-                    'groups' => match ($grouping) {
-                        FacilityStatsGrouping::Month => $this->byMonth(
-                            $query,
-                            $request->string('designated_from')->toString(),
-                            $request->string('designated_to')->toString(),
-                        ),
-                        FacilityStatsGrouping::Municipality => $this->byMunicipality($query),
-                        FacilityStatsGrouping::DepartmentCategory => $this->byDepartmentCategory($query),
-                    },
+                    'groups' => array_map($this->withPerCapita(...), $groups),
                     'total' => (clone $query)->count(),
+                    'population_as_of' => $grouping === FacilityStatsGrouping::Municipality
+                        ? MunicipalityPopulation::query()->max('as_of')
+                        : null,
                 ];
             },
         );
@@ -67,13 +78,19 @@ class MedicalFacilityStatsController extends Controller
              * 集計結果。`key` は `month` なら `YYYY-MM`、`municipality` なら市区町村コード、
              * `department_category` なら診療科目のコード
              *
-             * @var list<array{key: int|string|null, label: string|null, count: int}>
+             * @var list<array{key: int|string|null, label: string|null, count: int, population: int|null, count_per_10k: float|null}>
              */
             'data' => $result['groups'],
             'meta' => [
                 /** 絞り込んだ施設の数 */
                 'total' => (int) $result['total'],
                 'group_by' => $grouping->value,
+                /**
+                 * `population` の基準日（YYYY-MM-DD）。`municipality` 以外、または人口が未取込なら null
+                 *
+                 * @var string|null
+                 */
+                'population_as_of' => is_string($result['population_as_of']) ? $result['population_as_of'] : null,
                 'attribution' => $this->attribution(),
             ],
         ]);
@@ -95,14 +112,15 @@ class MedicalFacilityStatsController extends Controller
 
     /**
      * @param  Builder<MedicalFacility>  $query
-     * @return list<array{key: string|null, label: string|null, count: int}>
+     * @return list<array{key: string|null, label: string|null, count: int, population: int|null}>
      */
     private function byMunicipality(Builder $query): array
     {
         $rows = (clone $query)->toBase()
             ->leftJoin('municipalities', 'municipalities.code', '=', 'medical_facilities.municipality_code')
-            ->selectRaw('medical_facilities.municipality_code AS code, municipalities.name AS name, COUNT(*) AS facilities')
-            ->groupBy('medical_facilities.municipality_code', 'municipalities.name')
+            ->leftJoin('municipality_populations', 'municipality_populations.municipality_code', '=', 'medical_facilities.municipality_code')
+            ->selectRaw('medical_facilities.municipality_code AS code, municipalities.name AS name, municipality_populations.population AS population, COUNT(*) AS facilities')
+            ->groupBy('medical_facilities.municipality_code', 'municipalities.name', 'municipality_populations.population')
             ->orderByDesc('facilities')
             ->orderBy('code')
             ->get();
@@ -112,7 +130,26 @@ class MedicalFacilityStatsController extends Controller
             'key' => is_string($row->code) ? $row->code : null,
             'label' => is_string($row->name) ? $row->name : null,
             'count' => (int) $row->facilities,
+            'population' => is_numeric($row->population) ? (int) $row->population : null,
         ])->all());
+    }
+
+    /**
+     * Adds the population (only municipality groups carry one) and the count
+     * per 10,000 people, so every grouping returns the same shape.
+     *
+     * @param  array{key: int|string|null, label: string|null, count: int, population?: int|null}  $group
+     * @return array{key: int|string|null, label: string|null, count: int, population: int|null, count_per_10k: float|null}
+     */
+    private function withPerCapita(array $group): array
+    {
+        $population = $group['population'] ?? null;
+
+        return [
+            ...$group,
+            'population' => $population,
+            'count_per_10k' => $population ? round($group['count'] * 10_000 / $population, 2) : null,
+        ];
     }
 
     /**

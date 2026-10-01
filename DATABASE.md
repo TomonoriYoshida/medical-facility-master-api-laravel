@@ -113,6 +113,20 @@ CSVを更新してシーダーを再実行したあとは、`facilities:assign-m
 
 インデックス: `(municipality_code, institution_type)`。取り込むと、座標が町丁目・医療情報ネット・なしの施設の`geocoded_address`を空にし、次の`facilities:geocode`で付け直す（`updated_at`は座標が実際に変わった施設だけ動く）。
 
+## `municipality_populations`
+
+総務省「住民基本台帳に基づく人口、人口動態及び世帯数」の市区町村別の人口（総計＝日本人住民と外国人住民の計、毎年1月1日時点）。集計API（`/api/v1/stats/facilities?group_by=municipality`）の人口1万人あたりの件数に使う。`population:import`が最新の版で丸ごと入れ替える（年1回、夏ごろの公開。取り込み済みの版は飛ばすので、毎月3日に確認する）。`municipalities`はアドレス・ベース・レジストリから投入し直すため、人口は別の表に持つ。
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| `municipality_code` | char(5) (PK) | 元データの6桁の団体コードから末尾の検査数字を除いたもの。`municipalities.code`と同じ体系（政令指定都市は市と各区の両方がある） |
+| `population` | unsignedInteger | 人口（総計） |
+| `as_of` | date | 基準日（例: 2026-01-01） |
+| `created_at` / `updated_at` | datetime | |
+
+- 都道府県の合計（団体コードが`xx000x`）と全国の合計は入れない。
+- 住民登録上の人口のため、昼間人口の多い都心部（千代田区など）や、人口の少ない町村では、人口あたりの件数が極端な値になる。
+
 ## `rhb_dataset_downloads`
 
 地方厚生局データのダウンロード履歴を記録する追記専用のログテーブル。`app/Console/Commands/DownloadRhbDatasets.php`（`rhb:download`）が、局ごとのページに掲載された日付付きリンクを前回記録分と比較し、新しいバージョンが見つかった時だけ行を追加する。
@@ -223,6 +237,8 @@ Observerは`name`/`address`が変わった時しか正規化カラムを再計�
 2. **加工・編集した場合はその旨の記載も必須**：例）「北海道内の保険医療機関・保険薬局の指定一覧」（北海道厚生局）を加工して作成。また、加工後の情報をあたかも国（または府省等）が作成したかのような態様で公表・利用することは禁止されている。
 
 本アプリは取得したデータを構造化・分類（診療科目の大分類化等）した上でデータベースに格納しており、上記の「加工・編集」に該当する。
+
+市区町村の人口（`municipality_populations`）は総務省のサイトのコンテンツで、政府標準利用規約（CC BY 4.0 互換）に従い、出典を記載すれば加工・再配布できる。`meta.attribution.population_source`に出典を含めている。
 
 APIでは次のように扱っている。
 

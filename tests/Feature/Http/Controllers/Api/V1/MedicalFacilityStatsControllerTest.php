@@ -6,6 +6,7 @@ use App\Enums\DepartmentBaseCategory;
 use App\Enums\InstitutionType;
 use App\Models\MedicalFacility;
 use App\Models\Municipality;
+use App\Models\MunicipalityPopulation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -34,9 +35,9 @@ class MedicalFacilityStatsControllerTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('data', [
-            ['key' => '2026-01', 'label' => '2026年1月', 'count' => 2],
-            ['key' => '2026-02', 'label' => '2026年2月', 'count' => 0],
-            ['key' => '2026-03', 'label' => '2026年3月', 'count' => 1],
+            ['key' => '2026-01', 'label' => '2026年1月', 'count' => 2, 'population' => null, 'count_per_10k' => null],
+            ['key' => '2026-02', 'label' => '2026年2月', 'count' => 0, 'population' => null, 'count_per_10k' => null],
+            ['key' => '2026-03', 'label' => '2026年3月', 'count' => 1, 'population' => null, 'count_per_10k' => null],
         ]);
         $response->assertJsonPath('meta.total', 3);
         $response->assertJsonPath('meta.group_by', 'month');
@@ -47,6 +48,8 @@ class MedicalFacilityStatsControllerTest extends TestCase
     {
         Municipality::factory()->create(['code' => '13101', 'prefecture_code' => '13', 'name' => '千代田区']);
         Municipality::factory()->create(['code' => '13102', 'prefecture_code' => '13', 'name' => '中央区']);
+        MunicipalityPopulation::factory()->create(['municipality_code' => '13101', 'population' => 30_000, 'as_of' => '2026-01-01']);
+        MunicipalityPopulation::factory()->create(['municipality_code' => '13102', 'population' => 180_000, 'as_of' => '2026-01-01']);
         MedicalFacility::factory()->create(['prefecture_code' => '13', 'address' => '千代田区神田駿河台２丁目']);
         MedicalFacility::factory()->count(2)->create(['prefecture_code' => '13', 'address' => '中央区銀座１丁目']);
         MedicalFacility::factory()->create(['prefecture_code' => '13', 'address' => '存在しない市']);
@@ -57,11 +60,12 @@ class MedicalFacilityStatsControllerTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('data', [
-            ['key' => '13102', 'label' => '中央区', 'count' => 2],
-            ['key' => null, 'label' => null, 'count' => 1],
-            ['key' => '13101', 'label' => '千代田区', 'count' => 1],
+            ['key' => '13102', 'label' => '中央区', 'count' => 2, 'population' => 180_000, 'count_per_10k' => 0.11],
+            ['key' => null, 'label' => null, 'count' => 1, 'population' => null, 'count_per_10k' => null],
+            ['key' => '13101', 'label' => '千代田区', 'count' => 1, 'population' => 30_000, 'count_per_10k' => 0.33],
         ]);
         $response->assertJsonPath('meta.total', 4);
+        $response->assertJsonPath('meta.population_as_of', '2026-01-01');
     }
 
     public function test_counts_each_department_of_a_facility_so_counts_can_exceed_the_total(): void
@@ -83,10 +87,11 @@ class MedicalFacilityStatsControllerTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('data', [
-            ['key' => DepartmentBaseCategory::InternalMedicine->value, 'label' => '内科', 'count' => 2],
-            ['key' => DepartmentBaseCategory::Pediatrics->value, 'label' => '小児科', 'count' => 1],
+            ['key' => DepartmentBaseCategory::InternalMedicine->value, 'label' => '内科', 'count' => 2, 'population' => null, 'count_per_10k' => null],
+            ['key' => DepartmentBaseCategory::Pediatrics->value, 'label' => '小児科', 'count' => 1, 'population' => null, 'count_per_10k' => null],
         ]);
         $response->assertJsonPath('meta.total', 2);
+        $response->assertJsonPath('meta.population_as_of', null);
     }
 
     public function test_results_are_cached_and_marked_cacheable_for_an_hour(): void
