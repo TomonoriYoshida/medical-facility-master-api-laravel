@@ -23,6 +23,13 @@ Schedule::command('rhb:import')
     ->timezone('Asia/Tokyo')
     ->withoutOverlapping();
 
+// The 医療情報ネット coordinates are published each June and December; a
+// publication already imported is skipped, so checking monthly is enough.
+Schedule::command('medical-info-net:import')
+    ->monthlyOn(2, '04:30')
+    ->timezone('Asia/Tokyo')
+    ->withoutOverlapping();
+
 // Locates new and moved facilities; after the import (05:30, ~20 minutes)
 // and before rhb:export, so the day's files carry the locations.
 Schedule::command('facilities:geocode')

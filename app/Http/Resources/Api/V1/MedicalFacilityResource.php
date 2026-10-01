@@ -44,7 +44,7 @@ class MedicalFacilityResource extends JsonResource
             'postal_code' => $this->postal_code,
             'address' => $this->address,
             /**
-             * 住所から求めた座標（世界測地系）。`level` はその精度（住居・街区・地番・町丁目など）。
+             * 住所から求めた座標（世界測地系）。`level` はその精度（住居・街区・地番・町丁目など）か、厚生労働省「医療情報ネット」の座標を使ったこと。
              * 求められなかった施設はnull
              */
             'location' => $this->latitude === null || $this->longitude === null || $this->geocode_level === null ? null : [

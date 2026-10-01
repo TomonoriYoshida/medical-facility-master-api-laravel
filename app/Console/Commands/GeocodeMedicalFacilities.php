@@ -6,6 +6,7 @@ use App\Enums\GeocodeLevel;
 use App\Models\MedicalFacility;
 use App\Services\Geocoding\FacilityGeocoder;
 use App\Services\Geocoding\GeocodeResult;
+use App\Services\Geocoding\MedicalInfoNetLocator;
 use App\Services\Rhb\RhbScope;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -15,7 +16,8 @@ use Throwable;
 
 /**
  * Sets latitude/longitude/geocode_level from each facility's address (see
- * FacilityGeocoder), for the facilities whose address changed since it
+ * FacilityGeocoder, and MedicalInfoNetLocator for where the registry only
+ * reaches the 町丁目), for the facilities whose address changed since it
  * was last geocoded -- new facilities and moves, so usually only a few a
  * day. --all redoes every facility, e.g. after the registry's position
  * data has grown.
@@ -32,25 +34,36 @@ class GeocodeMedicalFacilities extends Command
 {
     private const int WRITE_CHUNK_SIZE = 1000;
 
-    public function handle(FacilityGeocoder $geocoder, RhbScope $scope): int
+    public function handle(FacilityGeocoder $geocoder, MedicalInfoNetLocator $medicalInfoNet, RhbScope $scope): int
     {
         $failed = false;
 
         foreach ($scope->prefectures() as $prefecture) {
-            $addresses = MedicalFacility::query()
+            /** @var array<int, array{institution_type: int, municipality_code: ?string, name: string, address: string}> $facilities */
+            $facilities = MedicalFacility::query()
                 ->where('prefecture_code', $prefecture->value)
                 ->unless($this->option('all'), fn ($query) => $query->where(fn ($query) => $query
                     ->whereNull('geocoded_address')
                     ->orWhereColumn('geocoded_address', '!=', 'address')))
-                ->pluck('address', 'id')
+                ->toBase()
+                ->get(['id', 'institution_type', 'municipality_code', 'name', 'address'])
+                ->mapWithKeys(fn (object $row): array => [(int) $row->id => [
+                    'institution_type' => (int) $row->institution_type,
+                    'municipality_code' => $row->municipality_code,
+                    'name' => (string) $row->name,
+                    'address' => (string) $row->address,
+                ]])
                 ->all();
 
-            if ($addresses === []) {
+            if ($facilities === []) {
                 continue;
             }
 
+            $addresses = array_map(fn (array $facility): string => $facility['address'], $facilities);
+
             try {
-                $counts = $this->store($geocoder->geocode($prefecture, $addresses), $addresses);
+                $results = $medicalInfoNet->refine($prefecture, $facilities, $geocoder->geocode($prefecture, $addresses));
+                $counts = $this->store($results, $addresses);
             } catch (Throwable $exception) {
                 report($exception);
                 $this->components->error("{$prefecture->label()}: {$exception->getMessage()}");

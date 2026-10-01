@@ -20,6 +20,7 @@ scheduler は毎日（日本時間）次の順に実行します。
 |---|---|---|
 | 05:00 | `rhb:download` | 各局の一覧ページを確認し、新しい版を取得 |
 | 05:30 | `rhb:import` | 取込ジョブをキューに投入（worker が実行） |
+| 毎月2日 04:30 | `medical-info-net:import` | 厚生労働省「医療情報ネット」の座標を取り込む（年2回の公開時だけ。取り込むと、町丁目レベルの施設を次の `facilities:geocode` で付け直す） |
 | 06:30 | `facilities:geocode` | 新規・移転した施設の座標を住所から求める（アドレス・ベース・レジストリのファイルを `storage-app` ボリュームに保存し、変わったものだけ再取得） |
 | 07:00 | `rhb:status` | すべての局・カテゴリが取込済みで最新かを確認 |
 | 07:10 | `rhb:export` | 一括ダウンロードのファイルを作成（データが変わったときだけ。全国で約1分半、ファイルは約50MB） |
@@ -114,6 +115,7 @@ docker compose up -d
 ```bash
 docker compose exec scheduler php artisan rhb:download
 docker compose exec app php artisan rhb:import --wait
+docker compose exec app php artisan medical-info-net:import   # 医療情報ネットの座標（約20秒）
 docker compose exec app php artisan facilities:geocode   # 座標を付与
 docker compose exec app php artisan rhb:export        # 一括ダウンロードのファイルを作成
 ```
@@ -171,6 +173,7 @@ docker compose run --rm app php artisan rhb:export --force
 座標の機能を含む版へ初めて更新したときは、`migrate` の後に次を実行します（所要時間とディスクは「初回のデータ取込」の注記を参照）。座標が変わった施設は `updated_at` が更新されるため、一括ダウンロードは翌朝の `rhb:export` で自動的に作り直されます。すぐに反映する場合は `rhb:export` も実行します。
 
 ```bash
+docker compose run --rm app php artisan medical-info-net:import
 docker compose run --rm app php artisan facilities:geocode
 ```
 
