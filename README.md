@@ -50,6 +50,8 @@
 | `department_category` | 診療科目の大分類（1: 内科 / 5: 眼科 など26分類） |
 | `designated_from` / `designated_to` | 指定年月日の範囲（`YYYY-MM-DD`、両端を含む） |
 | `designation_reason` | 登録理由（`新規` / `交代` / `組織変更` / `移転` など） |
+| `latitude` / `longitude` / `radius` | 近隣検索。指定した地点から `radius` メートル以内（既定1000、最大20000）の施設を近い順に返し、各施設に `distance`（メートル）を付ける。`sort` と併用するとその順 |
+| `municipality_code` | 市区町村コード（5桁、例: `13101` 千代田区） |
 | `updated_since` | この日時以降に内容が変わった施設（ISO 8601、例: `2026-10-01T05:00:00Z`。廃止・再開も含む） |
 | `sort` | 並び順（`designated_on` / `-designated_on`: 指定年月日の古い順 / 新しい順、`updated_at` / `-updated_at`: 内容が変わった日時の古い順 / 新しい順。省略時は id 順） |
 | `per_page` | 1ページの件数（既定25、最大100） |
@@ -64,6 +66,7 @@
     "institution_types": [{ "code": 1, "label": "病院" } /* … */],
     "statuses": [/* … */], "bureaus": [/* … */], "department_categories": [/* 26分類 */],
     "event_types": [{ "code": 1, "label": "新規" }, { "code": 2, "label": "廃止" }, { "code": 3, "label": "変更" }],
+    "geocode_levels": [{ "code": 1, "label": "住居" } /* 街区・地番・地番（枝番なし）・町丁目 */],
     "designation_reasons": ["新規", "組織変更", "交代", "移動", "移転", "その他", "継承"]  // 代表的な値（元データは自由記述）
   }
 }
@@ -92,8 +95,13 @@ GET /api/v1/medical-facilities?designated_from=2026-08-01&designated_to=2026-08-
       "name": "医療法人　愛全病院",
       "prefecture_code": "01",
       "prefecture": { "code": "01", "label": "北海道" },
+      "municipality": { "code": "01107", "label": "札幌市南区" },
       "postal_code": "005-0813",
       "address": "札幌市南区川沿１３条２丁目１番３８号",
+      "location": {  // 住所から求めた座標（求められなかった施設は null）
+        "latitude": 42.96, "longitude": 141.32,
+        "level": { "code": 2, "label": "街区" }  // 精度: 住居 / 街区 / 地番 / 地番（枝番なし） / 町丁目
+      },
       "phone_number": "011-571-5670",
       "bed_counts": { "一般": 231, "療養": 206 },
       "department_categories": [
@@ -110,7 +118,8 @@ GET /api/v1/medical-facilities?designated_from=2026-08-01&designated_to=2026-08-
       "notice": "本APIのデータは、各地方厚生局が公開する…を加工して作成しています。",
       "license": { "name": "公共データ利用規約（第1.0版）", "url": "https://www.digital.go.jp/…" },
       "disclaimer": "データの正確性・完全性は保証しません。…",
-      "sources": [ /* 8局の出典URL */ ]
+      "sources": [ /* 8局の出典URL */ ],
+      "address_source": { "name": "アドレス・ベース・レジストリ（デジタル庁）…", "url": "https://catalog.registries.digital.go.jp/rc/dataset/" }
     }
   }
 }
@@ -150,9 +159,9 @@ GET /api/v1/medical-facilities?designated_from=2026-08-01&designated_to=2026-08-
 1. 初回: 一括ダウンロードのファイルで全件を取り込み、`data_updated_at` を保存する（API で取得する場合は `sort=updated_at&per_page=100` を最後のページまで取得し、最も新しい `updated_at` を保存する）
 2. 以降: `GET /api/v1/medical-facilities?updated_since={保存した updated_at}&sort=updated_at&per_page=100` で変わった施設だけを取得し、`id` で上書きする
 
-- `updated_at` は施設の内容が実際に変わったとき（廃止・再開を含む）だけ更新され、変化のない取込では変わりません。廃止された施設は削除されず、`status` が「廃止」になります。
+- `updated_at` は施設の内容が実際に変わったとき（廃止・再開と、座標の追加・変更を含む）だけ更新され、変化のない取込では変わりません。廃止された施設は削除されず、`status` が「廃止」になります。
 - `updated_since` はその日時ちょうどの施設も含むため、前回の最後の施設が再び返ることがあります。`id` で上書きすれば問題ありません。
-- データが変わるのは毎日の取込（日本時間 05:00〜06:00 頃）のときだけです。この時間を避けて同期すると、ページの途中でデータが変わることはありません。
+- データが変わるのは毎日の取込と座標の付与（日本時間 05:00〜07:00 頃）のときだけです。この時間を避けて同期すると、ページの途中でデータが変わることはありません。
 
 ### 変化の一覧・施設の履歴
 
@@ -203,6 +212,7 @@ GET /api/v1/medical-facility-events?event_type=1&prefecture_code=13&occurred_fro
           1. ファイルを展開し、行を読み取って施設データに変換（Import 層）
           2. 施設ごとに新規作成 / 変更検出 / 再開を判定して保存し、イベントを記録（Sync 層）
           3. 今回のデータに載っていない施設を「廃止」にする（廃止検知）
+06:30  facilities:geocode  新規・移転した施設の座標を住所から求める（アドレス・ベース・レジストリ）
 07:00  rhb:status     すべての局・カテゴリが取込済みで最新かを確認
 07:10  rhb:export     一括ダウンロードのファイルを作成（データが変わったときだけ）
 ```
@@ -210,6 +220,7 @@ GET /api/v1/medical-facility-events?event_type=1&prefecture_code=13&occurred_fro
 - **取込済みはスキップ**: 取込済みのデータは翌日以降スキップします。パーサー変更時などは `rhb:import --force` で再取込できます。
 - **行単位の失敗**: 1行の保存に失敗しても他の行の取込は続けます。その施設は廃止扱いにせず、ジョブを失敗として記録し、翌日に自動で再試行します。
 - **監視**: 取得の失敗（局のサイトの構造変更を含む）と、取込の失敗・データの更新停止を、[healthchecks.io](https://healthchecks.io/) 経由で通知します（設定は [DEPLOY.md](DEPLOY.md) の「監視」）。
+- **座標**: デジタル庁のアドレス・ベース・レジストリで、住居（〇番〇号）・街区・地番・町丁目の順に、求められる最も細かい位置を使います。精度は施設ごとに `location.level` で返します（方法と実測の精度は [DATABASE.md](DATABASE.md) の「ジオコーディング」）。
 - **テーブル設計**: 詳細は [DATABASE.md](DATABASE.md) を参照してください。
 
 ```
@@ -304,6 +315,8 @@ vendor/bin/sail php vendor/bin/phpstan analyse --memory-limit=1G   # 静的解�
 
 各局の出典URLは、すべてのレスポンスの `meta.attribution.sources` に含めています。
 
+市区町村（`municipality`）と座標（`location`）は、デジタル庁の[アドレス・ベース・レジストリ](https://catalog.registries.digital.go.jp/rc/dataset/)（CC BY 4.0）を加工して作成しています。出典は `meta.attribution.address_source` にあります。
+
 - **免責**: データの正確性・完全性は保証しません。最新かつ正確な情報は、各地方厚生局の公表資料を確認してください。
 - **個人名は提供しません**: 元データの開設者名・管理者名は個人名を含むため、APIでは返しません。
 
@@ -318,5 +331,7 @@ vendor/bin/sail php vendor/bin/phpstan analyse --memory-limit=1G   # 静的解�
 API が返すデータの利用条件は、ソースコードのライセンスとは別です。前述の「データの出典・利用条件」を参照してください。
 
 ### サードパーティのデータ
+
+市区町村の一覧 [database/seeders/data/municipalities.csv](database/seeders/data/municipalities.csv) は、デジタル庁のアドレス・ベース・レジストリ「市区町村マスター」（CC BY 4.0）から廃止済みを除いて作成したものです。
 
 異体字の対応表 [database/seeders/data/itaiji-mapping.csv](database/seeders/data/itaiji-mapping.csv) は、Unicode コンソーシアムの [Unihan データベース](https://www.unicode.org/charts/unihan.html)（`kJapaneseOldVariant` / `kJapaneseNewVariant`）から抽出したデータを含みます。このデータは [Unicode License v3](database/seeders/data/LICENSE-Unicode.txt) に従います。

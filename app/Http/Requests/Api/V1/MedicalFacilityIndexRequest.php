@@ -86,6 +86,18 @@ class MedicalFacilityIndexRequest extends FormRequest
              */
             'updated_since' => ['sometimes', 'date'],
 
+            /**
+             * 検索地点の緯度（世界測地系）。`longitude` と組み合わせ、`radius` 以内の施設を近い順に返す
+             * （`sort` を指定した場合はその順）。各施設に `distance` が付く
+             */
+            'latitude' => ['required_with:longitude', 'numeric', 'between:20,46'],
+
+            /** 検索地点の経度（世界測地系） */
+            'longitude' => ['required_with:latitude', 'numeric', 'between:122,154'],
+
+            /** 検索半径（メートル、デフォルト1000、最大20000）。`latitude`・`longitude` と組み合わせる */
+            'radius' => ['sometimes', 'integer', 'min:1', 'max:20000'],
+
             /** 1ページあたりの件数（デフォルト25、最大100） */
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ];

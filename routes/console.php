@@ -23,6 +23,13 @@ Schedule::command('rhb:import')
     ->timezone('Asia/Tokyo')
     ->withoutOverlapping();
 
+// Locates new and moved facilities; after the import (05:30, ~20 minutes)
+// and before rhb:export, so the day's files carry the locations.
+Schedule::command('facilities:geocode')
+    ->dailyAt('06:30')
+    ->timezone('Asia/Tokyo')
+    ->withoutOverlapping();
+
 // Bulk download files, rebuilt only when the imported data changed.
 Schedule::command('rhb:export')
     ->dailyAt('07:10')

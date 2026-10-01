@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\DepartmentBaseCategory;
+use App\Enums\GeocodeLevel;
 use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityEventType;
 use App\Enums\MedicalFacilityStatus;
@@ -53,6 +54,7 @@ class OptionController extends Controller
                 'bureaus' => array_map(fn (array $meta): array => $this->codeAndLabel($meta['bureau']), array_values($scope->bureaus())),
                 'department_categories' => $hasDepartments ? array_map($this->codeAndLabel(...), DepartmentBaseCategory::cases()) : [],
                 'event_types' => array_map($this->codeAndLabel(...), MedicalFacilityEventType::cases()),
+                'geocode_levels' => array_map($this->codeAndLabel(...), GeocodeLevel::cases()),
                 'designation_reasons' => self::COMMON_DESIGNATION_REASONS,
             ],
         ]);
@@ -62,7 +64,7 @@ class OptionController extends Controller
      * @return array{code: int|string, label: string}
      */
     private function codeAndLabel(
-        Prefecture|InstitutionType|MedicalFacilityStatus|RhbBureau|DepartmentBaseCategory|MedicalFacilityEventType $enum,
+        Prefecture|InstitutionType|MedicalFacilityStatus|RhbBureau|DepartmentBaseCategory|MedicalFacilityEventType|GeocodeLevel $enum,
     ): array {
         return [
             'code' => $enum->value,
