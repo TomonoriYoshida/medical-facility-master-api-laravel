@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\MedicalFacilityController;
 use App\Http\Controllers\Api\V1\MedicalFacilityEventController;
+use App\Http\Controllers\Api\V1\MedicalFacilityEventStatsController;
 use App\Http\Controllers\Api\V1\MedicalFacilityStatsController;
 use App\Http\Controllers\Api\V1\OptionController;
 use Illuminate\Support\Facades\Route;
@@ -22,6 +23,9 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
     Route::get('stats/facilities', MedicalFacilityStatsController::class)
         ->middleware('cache.headers:public;max_age=3600;etag')
         ->name('stats.facilities');
+    Route::get('stats/facility-events', MedicalFacilityEventStatsController::class)
+        ->middleware('cache.headers:public;max_age=3600;etag')
+        ->name('stats.facility-events');
     // Fixed values that change only with a deploy, so clients may cache them.
     Route::get('options', OptionController::class)
         ->middleware('cache.headers:public;max_age=86400;etag')
