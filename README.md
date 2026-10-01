@@ -181,6 +181,7 @@ GET /api/v1/medical-facility-events?event_type=1&prefecture_code=13&occurred_fro
       "event_type": { "code": 3, "label": "変更" },
       "origin": { "code": 2, "label": "検知" },
       "occurred_on": "2026-10-01",
+      "detected_at": "2026-10-15T20:30:12.000000Z",
       "changes": [
         { "attribute": "status", "old": { "code": 1, "label": "指定中" }, "new": { "code": 3, "label": "休止" } },
         { "attribute": "phone_number", "old": "03-1111-1111", "new": "03-2222-2222" }
@@ -191,8 +192,9 @@ GET /api/v1/medical-facility-events?event_type=1&prefecture_code=13&occurred_fro
 }
 ```
 
-- **絞り込み**: `event_type`（1: 新規 / 2: 廃止 / 3: 変更）、`occurred_from` / `occurred_to`、施設の `prefecture_code` / `institution_type`、`per_page`
+- **絞り込み**: `event_type`（1: 新規 / 2: 廃止 / 3: 変更）、`occurred_from` / `occurred_to`、`detected_since`、施設の `prefecture_code` / `institution_type`、`per_page`
 - **`occurred_on` の意味**: 変化が載った公開データの日付です（各局は月1回更新）。実際の開業日・廃止日ではありません。開業日を知りたい場合は、施設の `designated_on`（指定年月日）を使ってください。
+- **前回の確認以降の変化**: 公開データは日付の数日〜数週間後に取り込むため、`occurred_on` で絞ると取りこぼします。`detected_at`（取り込んで検知した日時）を保存し、次回は `detected_since`（ISO 8601）に渡してください。
 - **記録の種類（`origin`）**: 変化の一覧は、公開データ間で見つかった変化（検知）だけを返します。取込を始めた時点の全施設（初回取込）と、取り込み直しによる差分（再処理）は含みません。施設の履歴では、初回取込を「掲載開始」の記録として含めます。
 - **再開**: 過去に廃止された施設が再び掲載された「新規」には `is_reopening: true` が付きます。
 - **個人名**: 開設者名・管理者名の変更は、`changes` に含めません。

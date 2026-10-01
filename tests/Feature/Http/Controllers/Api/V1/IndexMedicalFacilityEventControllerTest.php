@@ -186,6 +186,27 @@ class IndexMedicalFacilityEventControllerTest extends TestCase
         $this->assertEqualsCanonicalizing([$onFirstDay->id, $onLastDay->id], $response->json('data.*.id'));
     }
 
+    public function test_filters_by_detection_time_regardless_of_the_publication_date(): void
+    {
+        // Published as of October 1 but imported (detected) on October 15.
+        $detectedAfter = $this->event(MedicalFacilityEventType::Created, [
+            'occurred_on' => '2026-10-01',
+            'created_at' => '2026-10-15 05:30:00',
+        ]);
+        $this->event(MedicalFacilityEventType::Created, [
+            'occurred_on' => '2026-10-01',
+            'created_at' => '2026-10-09 05:30:00',
+        ]);
+
+        // 2026-10-10T00:00+09:00 is 2026-10-09T15:00Z, after the second event.
+        $response = $this->getJson('/api/v1/medical-facility-events?'.http_build_query(['detected_since' => '2026-10-10T00:00:00+09:00']));
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $detectedAfter->id);
+        $response->assertJsonPath('data.0.detected_at', '2026-10-15T05:30:00.000000Z');
+    }
+
     public function test_filters_by_the_facilitys_prefecture_and_institution_type(): void
     {
         $matching = $this->event(MedicalFacilityEventType::Created, [
@@ -225,6 +246,7 @@ class IndexMedicalFacilityEventControllerTest extends TestCase
         return [
             'unknown event_type' => [['event_type' => '9'], 'event_type'],
             'occurred_from not a date' => [['occurred_from' => '2026/10/01'], 'occurred_from'],
+            'detected_since not a date' => [['detected_since' => 'yesterday-ish'], 'detected_since'],
             'occurred_to before occurred_from' => [['occurred_from' => '2026-10-01', 'occurred_to' => '2026-09-01'], 'occurred_to'],
             'invalid prefecture_code' => [['prefecture_code' => '48'], 'prefecture_code'],
             'unknown institution_type' => [['institution_type' => '9'], 'institution_type'],

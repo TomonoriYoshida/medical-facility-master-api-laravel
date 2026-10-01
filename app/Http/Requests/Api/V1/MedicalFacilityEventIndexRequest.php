@@ -42,6 +42,13 @@ class MedicalFacilityEventIndexRequest extends FormRequest
                 Rule::when($this->filled('occurred_from'), 'after_or_equal:occurred_from'),
             ],
 
+            /**
+             * この日時以降に検知された変化だけを返す（ISO 8601、例: 2026-10-01T05:00:00+09:00）。
+             * `occurred_on` は公開データの日付で、取り込んで検知するのはその数日〜数週間後のため、
+             * 「前回確認してから増えた変化」はこちらで絞り込む
+             */
+            'detected_since' => ['sometimes', 'date'],
+
             /** 施設の都道府県コード（JIS X 0401の2桁、01〜47） */
             'prefecture_code' => ['sometimes', Rule::enum(Prefecture::class)],
 
