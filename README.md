@@ -34,6 +34,7 @@
 | GET | `/api/v1/medical-facilities/{id}` | 施設詳細 |
 | GET | `/api/v1/medical-facilities/{id}/events` | 施設の履歴（新規・廃止・変更） |
 | GET | `/api/v1/medical-facility-events` | 全国の変化の一覧（ページネーション付き） |
+| GET | `/api/v1/stats/facilities` | 施設数の集計（月・市区町村・診療科目ごと） |
 | GET | `/api/v1/options` | 絞り込みの選択肢（都道府県・施設種別・診療科目など） |
 | GET | `/api/v1/exports` | 一括ダウンロードのファイル一覧（都道府県ごと・全体の CSV / JSON Lines） |
 
@@ -195,6 +196,30 @@ GET /api/v1/medical-facility-events?event_type=1&prefecture_code=13&occurred_fro
 - **再開**: 過去に廃止された施設が再び掲載された「新規」には `is_reopening: true` が付きます。
 - **個人名**: 開設者名・管理者名の変更は、`changes` に含めません。
 - 記録は運用を始めてから蓄積されるため、最初の1〜2か月は変化の一覧が空になります。
+
+### 施設数の集計
+
+絞り込んだ施設を、月・市区町村・診療科目ごとに数えます。絞り込みの条件は一覧APIと同じです（`prefecture_code`・`municipality_code`・`institution_type`・`status`・`department_category`・`designation_reason`・`designated_from` / `designated_to`）。
+
+```http
+GET /api/v1/stats/facilities?group_by=month&designation_reason=新規&designated_from=2025-10-01&designated_to=2026-09-30&prefecture_code=13
+```
+
+```jsonc
+{
+  "data": [
+    { "key": "2025-10", "label": "2025年10月", "count": 92 },
+    { "key": "2025-11", "label": "2025年11月", "count": 87 }
+    // …期間内のすべての月
+  ],
+  "meta": { "total": 926, "group_by": "month", "attribution": { /* 出典 */ } }
+}
+```
+
+- **`group_by`**: `month`（指定年月日の月。`designated_from` / `designated_to` が必須で60か月まで、施設のない月は0）、`municipality`（市区町村コード。判定できない施設は `key` が null）、`department_category`（診療科目のコード）。`month` 以外は件数の多い順です。
+- **新規開業の数え方**: `designation_reason=新規` と指定年月日の期間を組み合わせます。保険医療機関の指定は6年ごとに更新されますが、指定年月日は最初の指定日のままです。
+- **診療科目**: 1つの施設が複数の診療科目に数えられるため、`count` の合計は `meta.total`（絞り込んだ施設数）と一致しません。
+- **キャッシュ**: データは1日1回しか変わらないため、結果をサーバー側で1時間キャッシュし、`Cache-Control: public, max-age=3600` を付けて返します。取込の直後は、最大1時間前の集計が返ることがあります。
 
 ### 共通
 
