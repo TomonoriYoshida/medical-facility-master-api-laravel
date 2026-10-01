@@ -20,6 +20,7 @@ scheduler は毎日（日本時間）次の順に実行します。
 |---|---|---|
 | 05:00 | `rhb:download` | 各局の一覧ページを確認し、新しい版を取得 |
 | 05:30 | `rhb:import` | 取込ジョブをキューに投入（worker が実行） |
+| 毎月3日 04:40 | `population:import` | 総務省の市区町村別人口（住民基本台帳）を取り込む（年1回の公開時だけ。集計APIの人口あたりの件数に使う） |
 | 毎月2日 04:30 | `medical-info-net:import` | 厚生労働省「医療情報ネット」の座標を取り込む（年2回の公開時だけ。取り込むと、町丁目レベルの施設を次の `facilities:geocode` で付け直す） |
 | 06:30 | `facilities:geocode` | 新規・移転した施設の座標を住所から求める（アドレス・ベース・レジストリのファイルを `storage-app` ボリュームに保存し、変わったものだけ再取得） |
 | 07:00 | `rhb:status` | すべての局・カテゴリが取込済みで最新かを確認 |
@@ -116,6 +117,7 @@ docker compose up -d
 docker compose exec scheduler php artisan rhb:download
 docker compose exec app php artisan rhb:import --wait
 docker compose exec app php artisan medical-info-net:import   # 医療情報ネットの座標（約20秒）
+docker compose exec app php artisan population:import         # 市区町村別の人口（数秒）
 docker compose exec app php artisan facilities:geocode   # 座標を付与
 docker compose exec app php artisan rhb:export        # 一括ダウンロードのファイルを作成
 ```
@@ -167,6 +169,14 @@ docker compose run --rm app php artisan rhb:export --force
 ```
 
 - `facilities:assign-municipalities` は施設の `updated_at` を変えないため、毎日の `rhb:export` は「データが変わっていない」と判断して一括ダウンロードを作り直しません。`--force` で作り直して、ファイルにも市区町村の列を反映させます。
+
+### 市区町村の人口（初回）
+
+人口の機能を含む版へ初めて更新したときは、`migrate` の後に次を実行します（数秒）。以降は scheduler が毎月3日に新しい版を確認します。
+
+```bash
+docker compose run --rm app php artisan population:import
+```
 
 ### 座標の付与（初回）
 

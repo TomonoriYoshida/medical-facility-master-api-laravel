@@ -52,6 +52,15 @@ class ScheduledTasksTest extends TestCase
         $this->assertSame('Asia/Tokyo', $event->timezone);
     }
 
+    public function test_population_import_is_checked_monthly(): void
+    {
+        $event = $this->findEvent('population:import');
+
+        $this->assertNotNull($event);
+        $this->assertSame('40 4 3 * *', $event->expression);
+        $this->assertSame('Asia/Tokyo', $event->timezone);
+    }
+
     private function findEvent(string $commandName): ?object
     {
         $schedule = app(Schedule::class);
