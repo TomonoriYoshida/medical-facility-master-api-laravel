@@ -9,6 +9,7 @@ use App\Enums\MedicalFacilityEventType;
 use App\Enums\MedicalFacilityStatus;
 use App\Enums\RhbBureau;
 use App\Models\MedicalFacilityEvent;
+use Dedoc\Scramble\Attributes\SchemaVariant;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -19,8 +20,15 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * to the same names and shapes MedicalFacilityResource uses, so a change
  * reads like the facility itself.
  *
+ * The event feed loads each event's facility and always returns it; a
+ * facility's own history does not. The schema variants document both, so
+ * the feed's `facility` is required rather than an anonymous overlay that
+ * client generators read as an empty object.
+ *
  * @mixin MedicalFacilityEvent
  */
+#[SchemaVariant('MedicalFacilityEventResource', default: true)]
+#[SchemaVariant('MedicalFacilityEventWithFacilityResource', whenLoaded: ['medicalFacility'])]
 class MedicalFacilityEventResource extends JsonResource
 {
     /**
