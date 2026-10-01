@@ -19,8 +19,10 @@ class RhbDatasetDownloadFactory extends Factory
      */
     public function definition(): array
     {
-        $dateString = fake()->dateTimeBetween('-1 year', 'now')->format('Ymd');
-        $filename = "code_ichiran_hospital_{$dateString}.xlsx";
+        // A different day for each download in a test: (bureau, category,
+        // filename, published_on) is unique, and the filename carries the day.
+        $publishedOn = now()->subDays(fake()->unique()->numberBetween(0, 364));
+        $filename = "code_ichiran_hospital_{$publishedOn->format('Ymd')}.xlsx";
 
         return [
             'bureau_code' => RhbBureau::Hokkaido,
@@ -29,7 +31,8 @@ class RhbDatasetDownloadFactory extends Factory
             'filename' => $filename,
             'source_url' => "https://kouseikyoku.mhlw.go.jp/hokkaido/{$filename}",
             'local_path' => "rhb/hokkaido/medical/{$filename}",
-            'published_on' => $dateString,
+            // Y-m-d: the date cast reads a bare "20260912" as a Unix timestamp.
+            'published_on' => $publishedOn->toDateString(),
             'downloaded_at' => now(),
         ];
     }
