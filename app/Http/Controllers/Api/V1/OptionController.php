@@ -45,16 +45,28 @@ class OptionController extends Controller
 
         return response()->json([
             'data' => [
+                /** @var list<array{code: string, label: string, bureau: array{code: int, label: string}}> */
                 'prefectures' => array_map(fn (Prefecture $prefecture): array => [
                     ...$this->codeAndLabel($prefecture),
                     'bureau' => $this->codeAndLabel($bureauByPrefectureCode[$prefecture->value]),
                 ], $scope->prefectures()),
+                /** @var list<array{code: int, label: string}> */
                 'institution_types' => array_map($this->codeAndLabel(...), $scope->institutionTypes()),
+                /** @var list<array{code: int, label: string}> */
                 'statuses' => array_map($this->codeAndLabel(...), MedicalFacilityStatus::cases()),
+                /** @var list<array{code: int, label: string}> */
                 'bureaus' => array_map(fn (array $meta): array => $this->codeAndLabel($meta['bureau']), array_values($scope->bureaus())),
+                /** @var list<array{code: int, label: string}> */
                 'department_categories' => $hasDepartments ? array_map($this->codeAndLabel(...), DepartmentBaseCategory::cases()) : [],
+                /** @var list<array{code: int, label: string}> */
                 'event_types' => array_map($this->codeAndLabel(...), MedicalFacilityEventType::cases()),
+                /** @var list<array{code: int, label: string}> */
                 'geocode_levels' => array_map($this->codeAndLabel(...), GeocodeLevel::cases()),
+                /**
+                 * 代表的な登録理由（元データは自由記述）
+                 *
+                 * @var list<string>
+                 */
                 'designation_reasons' => self::COMMON_DESIGNATION_REASONS,
             ],
         ]);
