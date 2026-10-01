@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\MedicalFacility;
 use App\Models\User;
 use App\Observers\MedicalFacilityObserver;
+use App\Services\Address\MunicipalityResolver;
 use App\Services\Text\ItaijiNormalizer;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -20,6 +21,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(ItaijiNormalizer::class);
+        $this->app->singleton(MunicipalityResolver::class);
     }
 
     /**

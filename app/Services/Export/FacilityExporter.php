@@ -46,7 +46,7 @@ final class FacilityExporter
     public const array CSV_COLUMNS = [
         'id', 'medical_institution_code', 'facility_code',
         'institution_type_code', 'institution_type', 'status_code', 'status', 'bureau_code', 'bureau',
-        'name', 'prefecture_code', 'prefecture', 'postal_code', 'address', 'phone_number',
+        'name', 'prefecture_code', 'prefecture', 'municipality_code', 'municipality', 'postal_code', 'address', 'phone_number',
         'designated_on', 'designation_history', 'bed_counts',
         'department_category_codes', 'department_categories',
         'created_at', 'updated_at',
@@ -199,6 +199,7 @@ final class FacilityExporter
             $row['status']['code'], $row['status']['label'],
             $row['bureau']['code'], $row['bureau']['label'],
             $row['name'], $row['prefecture_code'], $row['prefecture']['label'],
+            $row['municipality']['code'] ?? null, $row['municipality']['label'] ?? null,
             $row['postal_code'], $row['address'], $row['phone_number'],
             $row['designated_on'],
             json_encode($row['designation_history'] ?? [], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),

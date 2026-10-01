@@ -102,10 +102,11 @@ cp .env.production.example .env
 docker compose build                    # 初回は数分かかる
 docker compose run --rm app php artisan migrate --force
 docker compose run --rm app php artisan db:seed --class=KanjiVariantSeeder --force
+docker compose run --rm app php artisan db:seed --class=MunicipalitySeeder --force
 docker compose up -d
 ```
 
-- `db:seed` は必ず `--class=KanjiVariantSeeder` を指定してください。`DatabaseSeeder` はテストユーザーを作るもので、本番イメージには必要な開発用パッケージ（Faker）が入っていません。
+- `db:seed` は必ず `--class=` を指定してください（`KanjiVariantSeeder`、`MunicipalitySeeder`）。`DatabaseSeeder` はテストユーザーを作るもので、本番イメージには必要な開発用パッケージ（Faker）が入っていません。
 
 初回のデータ取込を実行します。全国分で20分前後かかります（目安: 約230行/秒）。
 
@@ -148,6 +149,18 @@ docker compose up -d
 
 - worker は、実行中のジョブが終わるまで最大10分待ってから停止します（`stop_grace_period`）。取込の時間帯（05:00〜06:00 頃）を避けると、すぐに切り替わります。
 - 設定（config）とルートのキャッシュは、コンテナの起動時に作り直されます。`.env` を変えた場合も `docker compose up -d` で反映されます。
+
+### 市区町村マスタの投入・更新
+
+市区町村コードの機能を含む版へ初めて更新するとき、および `database/seeders/data/municipalities.csv` を更新した版をデプロイしたときは、`migrate` の後に次を実行します。
+
+```bash
+docker compose run --rm app php artisan db:seed --class=MunicipalitySeeder --force
+docker compose run --rm app php artisan facilities:assign-municipalities
+docker compose run --rm app php artisan rhb:export --force
+```
+
+- `facilities:assign-municipalities` は施設の `updated_at` を変えないため、毎日の `rhb:export` は「データが変わっていない」と判断して一括ダウンロードを作り直しません。`--force` で作り直して、ファイルにも市区町村の列を反映させます。
 
 ## 4. バックアップ
 

@@ -25,6 +25,11 @@ trait ProvidesAttribution
                 'url' => 'https://www.digital.go.jp/resources/open_data/public_data_license_v1.0',
             ],
             'disclaimer' => 'データの正確性・完全性は保証しません。最新かつ正確な情報は、各地方厚生局の公表資料を確認してください。',
+            // 市区町村名・コードの出典（デジタル庁 アドレス・ベース・レジストリ、政府標準利用規約／CC BY 4.0）。
+            'municipality_source' => [
+                'name' => 'アドレス・ベース・レジストリ 市区町村マスター（デジタル庁）',
+                'url' => 'https://catalog.registries.digital.go.jp/rc/dataset/ba-o1-000000_g2-000002',
+            ],
             // The bureaus this installation actually draws from (RhbScope).
             'sources' => collect(app(RhbScope::class)->bureaus())
                 ->map(fn (array $bureau) => [

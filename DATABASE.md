@@ -36,6 +36,7 @@ medical_facilities (1) ──< (多) medical_facility_events
 | `name` | string | - | 医療機関名称 |
 | `name_normalized` | string | ✓ | `name`をNFKC正規化＋異体字統合（`kanji_variants`参照）した検索用カラム。`MedicalFacilityObserver`が保存時に自動計算するため`#[Fillable]`には含まれない |
 | `prefecture_code` | string(2) | - | 都道府県コード |
+| `municipality_code` | char(5) | ✓ | 市区町村コード（全国地方公共団体コード5桁）。`address`の先頭の市区町村名を`App\Services\Address\MunicipalityResolver`が`municipalities`と最長一致で判定し、`MedicalFacilityObserver`が都道府県・住所の変更時に自動計算する（`#[Fillable]`には含まれない）。判定できない住所はnull（全国約22万件中21件、旧字体・誤記の住所）。既存データへの付与・再計算は`facilities:assign-municipalities`（`updated_at`は動かさない）。インデックスあり |
 | `postal_code` | string(8) | ✓ | 郵便番号（`〒NNN－NNNN`形式の原本から抽出） |
 | `address` | string | - | 所在地 |
 | `address_normalized` | string | ✓ | `address`を`App\Services\Text\AddressNormalizer`で正規化した検索用カラム。`MedicalFacilityObserver`が保存時に自動計算するため`#[Fillable]`には含まれない |
@@ -79,6 +80,19 @@ WHERE e.event_type = 1 -- Created
 ```
 
 診療科目単位のイベント（旧`department_code`カラム）は、診療科目が独立したレコードではなく施設に紐づく大分類タグの配列になったことに伴い廃止した。診療科目の変化は`department_categories`カラムの差分として、施設単位の`Updated`イベントのpayloadに含まれる。
+
+## `municipalities`
+
+市区町村マスタ。デジタル庁アドレス・ベース・レジストリの市区町村マスター（廃止済みを除く）から作成した`database/seeders/data/municipalities.csv`を`MunicipalitySeeder`で投入する（`kanji_variants`と同じ運用）。
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| `code` (PK) | char(5) | 全国地方公共団体コード5桁（ABRの6桁コードから検査数字を除いたもの） |
+| `prefecture_code` | char(2) | 都道府県コード。インデックスあり |
+| `name` | string | 郡＋市＋区の結合表記（例: 札幌市中央区、磯城郡三宅町） |
+| `name_kana` | string | 同カナ |
+
+CSVを更新してシーダーを再実行したあとは、`facilities:assign-municipalities`で既存施設に反映する（キューワーカーの再起動も同コマンドが行う）。出典はデジタル庁（政府標準利用規約・CC BY 4.0互換）で、APIの`meta.attribution.municipality_source`に表示している。
 
 ## `rhb_dataset_downloads`
 
