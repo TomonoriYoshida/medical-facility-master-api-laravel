@@ -87,20 +87,27 @@ class MedicalFacilityController extends Controller
     }
 
     /**
+     * Each space-separated word (half- or full-width space) must appear in
+     * the name or the address, so "札幌 眼科" finds eye clinics in Sapporo.
+     *
      * @param  Builder<MedicalFacility>  $query
      * @return Builder<MedicalFacility>
      */
     private function applySearch(Builder $query, string $term): Builder
     {
-        // Escape after normalizing, not before: NFKC turns full-width
-        // "％＿＼" into the LIKE metacharacters "%_\" themselves.
-        $namePattern = '%'.$this->escapeLike($this->itaijiNormalizer->normalize($term)).'%';
-        $addressPattern = '%'.$this->escapeLike($this->addressNormalizer->normalize($term)).'%';
+        foreach (MedicalFacilityIndexRequest::searchWords($term) as $word) {
+            // Escape after normalizing, not before: NFKC turns full-width
+            // "％＿＼" into the LIKE metacharacters "%_\" themselves.
+            $namePattern = '%'.$this->escapeLike($this->itaijiNormalizer->normalize($word)).'%';
+            $addressPattern = '%'.$this->escapeLike($this->addressNormalizer->normalize($word)).'%';
 
-        return $query->where(function ($query) use ($namePattern, $addressPattern): void {
-            $query->where('name_normalized', 'like', $namePattern)
-                ->orWhere('address_normalized', 'like', $addressPattern);
-        });
+            $query->where(function ($query) use ($namePattern, $addressPattern): void {
+                $query->where('name_normalized', 'like', $namePattern)
+                    ->orWhere('address_normalized', 'like', $addressPattern);
+            });
+        }
+
+        return $query;
     }
 
     /**

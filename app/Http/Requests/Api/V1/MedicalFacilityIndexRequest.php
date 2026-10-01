@@ -7,12 +7,26 @@ use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityStatus;
 use App\Enums\Prefecture;
 use App\Enums\RhbBureau;
+use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class MedicalFacilityIndexRequest extends FormRequest
 {
+    /** Each word adds a LIKE over name and address, so their number is capped. */
+    public const int MAX_SEARCH_WORDS = 5;
+
+    /**
+     * The words of a `q` search: split on half- and full-width spaces.
+     *
+     * @return list<string>
+     */
+    public static function searchWords(string $term): array
+    {
+        return preg_split('/[\s\x{3000}]+/u', $term, flags: PREG_SPLIT_NO_EMPTY) ?: [];
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -53,8 +67,21 @@ class MedicalFacilityIndexRequest extends FormRequest
              */
             'medical_institution_code' => ['sometimes', 'string', 'regex:/^[0-9]{10}(,[0-9]{10}){0,99}$/'],
 
-            /** 施設名・住所のあいまい検索キーワード（全角半角・異体字ゆれを吸収） */
-            'q' => ['sometimes', 'string', 'encoding:UTF-8', 'max:255'],
+            /**
+             * 施設名・住所のあいまい検索キーワード（全角半角・異体字ゆれを吸収）。
+             * 空白（全角・半角）で区切ると、すべての語を含む施設を返す（例: `札幌 眼科`、最大5語）
+             */
+            'q' => [
+                'sometimes',
+                'string',
+                'encoding:UTF-8',
+                'max:255',
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    if (is_string($value) && count(self::searchWords($value)) > self::MAX_SEARCH_WORDS) {
+                        $fail('The :attribute field must not contain more than '.self::MAX_SEARCH_WORDS.' words.');
+                    }
+                },
+            ],
 
             /** 指定年月日がこの日以降（YYYY-MM-DD） */
             'designated_from' => ['sometimes', 'date_format:Y-m-d'],
