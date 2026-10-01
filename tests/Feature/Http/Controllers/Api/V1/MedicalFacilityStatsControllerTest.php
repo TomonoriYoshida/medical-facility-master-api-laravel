@@ -107,6 +107,21 @@ class MedicalFacilityStatsControllerTest extends TestCase
         $this->getJson('/api/v1/stats/facilities?group_by=municipality&prefecture_code=01')->assertJsonPath('meta.total', 2);
     }
 
+    public function test_limits_uncached_computations_per_ip_but_not_cached_answers(): void
+    {
+        config(['api.stats_computations_per_minute' => 2]);
+
+        $this->getJson('/api/v1/stats/facilities?group_by=municipality')->assertOk();
+        $this->getJson('/api/v1/stats/facilities?group_by=department_category')->assertOk();
+
+        $this->getJson('/api/v1/stats/facilities?group_by=municipality')->assertOk();
+        $this->getJson('/api/v1/stats/facilities?group_by=municipality&prefecture_code=01')
+            ->assertTooManyRequests()
+            ->assertHeader('Retry-After');
+        $this->getJson('/api/v1/stats/facilities?group_by=municipality&prefecture_code=01', ['REMOTE_ADDR' => '203.0.113.9'])
+            ->assertOk();
+    }
+
     /**
      * @return array<string, array{array<string, string>, string, string}>
      */

@@ -96,6 +96,15 @@ class MedicalFacilityEventStatsControllerTest extends TestCase
             ->assertHeader('Cache-Control', 'max-age=3600, public');
     }
 
+    public function test_shares_the_per_ip_limit_on_uncached_computations(): void
+    {
+        config(['api.stats_computations_per_minute' => 1]);
+
+        $this->getJson('/api/v1/stats/facilities?group_by=municipality')->assertOk();
+
+        $this->getJson('/api/v1/stats/facility-events?group_by=municipality&event_type=1')->assertTooManyRequests();
+    }
+
     /**
      * @return array<string, array{array<string, string|int>, string, string}>
      */

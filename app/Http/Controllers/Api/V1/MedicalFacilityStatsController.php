@@ -7,13 +7,13 @@ use App\Enums\FacilityStatsGrouping;
 use App\Http\Controllers\Api\V1\Concerns\BuildsMonthlyGroups;
 use App\Http\Controllers\Api\V1\Concerns\FiltersMedicalFacilities;
 use App\Http\Controllers\Api\V1\Concerns\ProvidesAttribution;
+use App\Http\Controllers\Api\V1\Concerns\RemembersStats;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\MedicalFacilityStatsRequest;
 use App\Models\MedicalFacility;
 use App\Models\MunicipalityPopulation;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class MedicalFacilityStatsController extends Controller
@@ -21,9 +21,7 @@ class MedicalFacilityStatsController extends Controller
     use BuildsMonthlyGroups;
     use FiltersMedicalFacilities;
     use ProvidesAttribution;
-
-    /** The data changes once a day (the import), so an hour of staleness is harmless. */
-    private const int CACHE_SECONDS = 3600;
+    use RemembersStats;
 
     /**
      * 施設数の集計
@@ -46,10 +44,10 @@ class MedicalFacilityStatsController extends Controller
         ksort($filters);
         $grouping = $request->grouping();
 
-        $result = Cache::remember(
+        $result = $this->rememberStats(
+            $request,
             // v2: entries cached before the population fields lack them.
             'medical-facility-stats:v2:'.sha1((string) json_encode($filters)),
-            self::CACHE_SECONDS,
             function () use ($request, $filters, $grouping): array {
                 $query = $this->applyFilters(MedicalFacility::query(), $filters);
 

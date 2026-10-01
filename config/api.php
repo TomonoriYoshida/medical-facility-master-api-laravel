@@ -32,6 +32,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Stats Computations
+    |--------------------------------------------------------------------------
+    |
+    | The stats endpoints cache each answer for an hour, but any new filter
+    | combination (a date range, a designation_reason) is computed afresh
+    | over every matching facility. Only those computations count toward
+    | this per-IP limit; cached answers are covered by the API's own limit.
+    | The dashboard asks for up to five aggregates per filter change.
+    |
+    */
+
+    'stats_computations_per_minute' => (int) env('STATS_COMPUTATIONS_PER_MINUTE', 30),
+
+    /*
+    |--------------------------------------------------------------------------
     | Access Log Check
     |--------------------------------------------------------------------------
     |

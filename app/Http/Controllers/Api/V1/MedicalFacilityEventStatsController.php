@@ -7,6 +7,7 @@ use App\Enums\MedicalFacilityEventOrigin;
 use App\Http\Controllers\Api\V1\Concerns\BuildsMonthlyGroups;
 use App\Http\Controllers\Api\V1\Concerns\FiltersMedicalFacilities;
 use App\Http\Controllers\Api\V1\Concerns\ProvidesAttribution;
+use App\Http\Controllers\Api\V1\Concerns\RemembersStats;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\MedicalFacilityEventStatsRequest;
 use App\Models\MedicalFacility;
@@ -14,16 +15,13 @@ use App\Models\MedicalFacilityEvent;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Cache;
 
 class MedicalFacilityEventStatsController extends Controller
 {
     use BuildsMonthlyGroups;
     use FiltersMedicalFacilities;
     use ProvidesAttribution;
-
-    /** The data changes once a day (the import), so an hour of staleness is harmless. */
-    private const int CACHE_SECONDS = 3600;
+    use RemembersStats;
 
     /** The request fields that narrow the facilities rather than the events. */
     private const array FACILITY_FILTERS = ['prefecture_code', 'municipality_code', 'institution_type', 'department_category'];
@@ -46,9 +44,9 @@ class MedicalFacilityEventStatsController extends Controller
         ksort($filters);
         $grouping = $request->grouping();
 
-        $result = Cache::remember(
+        $result = $this->rememberStats(
+            $request,
             'medical-facility-event-stats:'.sha1((string) json_encode($filters)),
-            self::CACHE_SECONDS,
             function () use ($request, $filters, $grouping): array {
                 $query = $this->events($filters);
 
