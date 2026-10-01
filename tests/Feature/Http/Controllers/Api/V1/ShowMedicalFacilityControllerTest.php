@@ -41,6 +41,7 @@ class ShowMedicalFacilityControllerTest extends TestCase
         ]);
         $response->assertJsonMissingPath('data.bureau_code');
         $response->assertJsonMissingPath('data.latitude');
+        $response->assertJsonPath('data.location', null);
         // Personal names (administrators are always individuals, founders
         // of clinics usually are) stay in the database but are not served.
         $response->assertJsonMissingPath('data.founder_name');

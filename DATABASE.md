@@ -40,8 +40,10 @@ medical_facilities (1) ──< (多) medical_facility_events
 | `postal_code` | string(8) | ✓ | 郵便番号（`〒NNN－NNNN`形式の原本から抽出） |
 | `address` | string | - | 所在地 |
 | `address_normalized` | string | ✓ | `address`を`App\Services\Text\AddressNormalizer`で正規化した検索用カラム。`MedicalFacilityObserver`が保存時に自動計算するため`#[Fillable]`には含まれない |
-| `latitude` | decimal(10,6) | ✓ | 所在地座標（緯度）。地方厚生局データには含まれないため、この経路からのインポートでは常にnull。将来のジオコーディング機能に備えてカラムのみ温存 |
-| `longitude` | decimal(10,6) | ✓ | 所在地座標（経度）。同上 |
+| `latitude` | decimal(10,6) | ✓ | 所在地座標（緯度）。地方厚生局データには含まれないため、`facilities:geocode`が住所からアドレス・ベース・レジストリで求める（下記「ジオコーディング」）。求められなかった施設・未処理の施設はnull。住所が変わると`MedicalFacilityObserver`がnullに戻す |
+| `longitude` | decimal(10,6) | ✓ | 所在地座標（経度）。同上。`(latitude, longitude)`の複合インデックスで近隣検索の範囲を絞る |
+| `geocode_level` | unsignedTinyInteger | ✓ | `App\Enums\GeocodeLevel` をcast。座標の精度。1:住居（〇番〇号） 2:街区（〇番） 3:地番（〇番地〇） 4:地番（枝番なし。同じ地番の別の枝番の座標） 5:町丁目（代表点）。座標がない施設はnull |
+| `geocoded_address` | string | ✓ | 座標を求めたときの`address`。`address`と異なる施設（新規・移転）だけを`facilities:geocode`が処理する。座標を求められなかった施設にも入れ、毎日の再試行を防ぐ（`--all`で再試行） |
 | `phone_number` | string | ✓ | 電話番号。区切り文字を`0X-XXXX-XXXX`形式のハイフンに正規化して保持（括弧区切り・連続ハイフンのタイプミスのみ補正、桁の欠落など元データから正しい形を機械的に復元できないものはそのまま保持） |
 | `founder_name` | string | ✓ | 開設者（法人名＋代表者名等、原本の表記をそのまま保持）。個人名を含むことが多いため、**APIでは返さない** |
 | `administrator_name` | string | ✓ | 管理者名（常に個人名）。**APIでは返さない** |
@@ -49,7 +51,7 @@ medical_facilities (1) ──< (多) medical_facility_events
 | `designation_history` | json, nullable | ✓ | 指定年月日欄に埋め込まれた履歴（`{reason, date}` の配列。`reason` は新規／組織変更／交代等の登録理由、`date` は現在の指定期間の開始日と見られる）。約1割の施設は登録理由の記載がなく、`reason` が null になる。**`medical_facility_events`には流し込まない**——events テーブルは「自分（インポーター）が今回の同期で検知した変化」を意味する追記専用ログであり、この履歴はインポート開始以前から存在する情報のため意味が異なる。単なるマップ済み属性として通常の差分検出（`AttributeDiff`）の対象にする |
 | `bed_counts` | json, nullable | ✓ | 病床種別（療養／一般／精神等）→ 病床数のラベル付き辞書。薬局は常にnull |
 | `department_categories` | json, nullable | ✓ | `App\Enums\DepartmentBaseCategory`値の配列（`AsEnumCollection`キャスト）。医科・歯科のみ、薬局は常に空配列。原本の診療科目欄は「基本診療科名＋自由な修飾語」の組み合わせ命名が医療法施行規則で公式に許容されており事実上自由記述に近いため、修飾語を含む完全一致ではなく「大分類（内科系・外科系など）のどれに該当するか」というマーカーマッチによる粗い分類に留めている（実データ検証で出現件数の96.3%を分類可能と確認済み。完全一致の復元は制度上原理的に不可能） |
-| `created_at` / `updated_at` | datetime | - | `updated_at`は施設データ（マップ済み属性）が実際に変わった時だけ更新される。取込のたびに行う`last_seen_rhb_dataset_download_id`の更新や、`facilities:renormalize`による正規化カラムの再計算では変わらない（APIでも「施設情報の最終更新日時」として返しているため） |
+| `created_at` / `updated_at` | datetime | - | `updated_at`は施設データ（マップ済み属性）が実際に変わった時と、`facilities:geocode`で座標（`latitude`/`longitude`/`geocode_level`）が変わった時だけ更新される。座標を含めるのは、差分同期（`updated_since`）の利用者と一括ダウンロード（`rhb:export`）が座標の追加・変更を拾えるようにするため。取込のたびに行う`last_seen_rhb_dataset_download_id`の更新や、`facilities:renormalize`・`facilities:assign-municipalities`による派生カラムの再計算では変わらない（APIでも「施設情報の最終更新日時」として返しているため） |
 
 インデックス: `institution_type`、`status`、`prefecture_code`、`name_normalized`、`address_normalized`、`designated_on`（一覧APIの指定年月日による絞り込み・並び替え用）。`unique(bureau_code, prefecture_code, institution_type, facility_code)`、`unique(medical_institution_code)`。複合インデックス`medical_facilities_reconcile_index`（`institution_type`, `prefecture_code`, `status`, `last_seen_rhb_dataset_download_id`）は廃業検知クエリ用——`prefecture_code`を含むのは、1件の`rhb_dataset_downloads`行が複数県をまとめて束ねる局（東北・関東信越等）が存在するため、廃業検知が誤って別県の施設まで対象にしないためのスコープ絞り込み。
 
@@ -92,7 +94,7 @@ WHERE e.event_type = 1 -- Created
 | `name` | string | 郡＋市＋区の結合表記（例: 札幌市中央区、磯城郡三宅町） |
 | `name_kana` | string | 同カナ |
 
-CSVを更新してシーダーを再実行したあとは、`facilities:assign-municipalities`で既存施設に反映する（キューワーカーの再起動も同コマンドが行う）。出典はデジタル庁（政府標準利用規約・CC BY 4.0互換）で、APIの`meta.attribution.municipality_source`に表示している。
+CSVを更新してシーダーを再実行したあとは、`facilities:assign-municipalities`で既存施設に反映する（キューワーカーの再起動も同コマンドが行う）。出典はデジタル庁（CC BY 4.0）で、APIの`meta.attribution.address_source`に表示している。
 
 ## `rhb_dataset_downloads`
 
@@ -153,12 +155,38 @@ Observerは`name`/`address`が変わった時しか正規化カラムを再計�
 
 `ItaijiNormalizer`を合成し（NFKCで全角数字・全角ハイフンを半角化）、その後に住所特有のルールを1点追加する: 実データで番地区切りにカタカナ長音記号「ー」が誤用されているケース（例: `丸塚町１５７ー１`）を、数字に前後を挟まれている場合のみハイフンへ変換する。`ガーデンハウス`のような建物名内の正当な長音記号はカナに前後を挟まれるため対象外——機械的に判別できるのはこの文脈のみと実データで確認済み。`name_normalized`と同じく`MedicalFacilityObserver`が`address`の変更を検知して自動計算する。
 
+## ジオコーディング（`App\Services\Geocoding\FacilityGeocoder`）
+
+デジタル庁アドレス・ベース・レジストリ（ABR、CC BY 4.0）の次のファイルで住所から座標を求める。ファイルはS3（`config/abr.php`）から取得してローカルディスクの`abr/`に保存し、次回からはETagで再検証する（変わっていなければ再取得しない）。参照データは全国で数千万行あるため、DBには入れず、都道府県ごとに1回ずつ流し読みして、対象の施設に必要な行だけを使う。
+
+| データセット | 単位 | 用途 |
+|---|---|---|
+| 町字マスター（`mt_town`）・位置参照（`mt_town_pos`） | 都道府県 | 町字の特定、住居表示の実施有無、町丁目の代表点 |
+| 住居表示 街区（`mt_rsdtdsp_blk`）・位置参照 | 都道府県 | 〇番 |
+| 住居表示 住居（`mt_rsdtdsp_rsdt`）・位置参照 | 都道府県 | 〇番〇号 |
+| 地番マスター（`mt_parcel`）・位置参照 | 市区町村 | 〇番地〇（対象の施設がある市区町村のファイルだけ取得） |
+
+1. `MunicipalityResolver::match()`で市区町村と残りの住所を得る（ABRの6桁コードは`mt_town`から引く）
+2. `TownMatcher`で町字を特定する。吸収する表記の違いは次のとおり（いずれも全国の実データで確認したもの）
+   - ABRの「大字北堀」「字豊見城」（沖縄など）と、住所の「北堀」「豊見城」
+   - 小字の有無（「大字鶴賀字田町」を「鶴賀田町」「田町」と書く）。ただし小字を省いた表記は、それが1つの町字に決まるときだけ使う（「福室」は丁目と多数の小字で共有されるため、「福室5-10-5」を小字と取り違えない）
+   - 丁目の漢数字・算用数字と、丁目を省いたハイフン表記（「九段南1-6-5」）。丁目のある町は丁目なしの大字としても載っていることがあるため（「広小路」と「広小路一丁目」…）、ハイフン表記は丁目として先に解釈する
+   - 京都市の通り名（「高倉通姉小路下ル東片町」）。そのままでは一致しないときだけ、「上ル・下ル・東入・西入」までを外して照合し直す
+3. `BanchiParser`で番地の数字を読む。「6-5」が街区・住居か地番・枝番かは書き方では決まらないため、町字の住居表示フラグで決める
+4. 住居表示の地区は住居 → 街区、それ以外は地番 → 同じ地番の別の枝番、の順に座標を探し、なければ町字の代表点を使う。小字には代表点がほとんどない（愛知県で53,566件中724件）ため、小字に代表点がなければ親の大字（町字IDの上4桁＋`000`）の代表点を使う
+
+町字ID（`machiaza_id`）は市区町村の中でしか一意でないため、照合のキーには必ず市区町村コードを含める。
+
+町字マスターは都道府県で8万行を超えることがある（福島県は86,003行、ほぼ小字）ため、市区町村ごとに読んで照合しては捨て、PHPの既定のメモリ上限（128MB）に収める。ファイルは市区町村ごとにまとまって並んでいる前提で、崩れていれば誤った照合をせず例外にする。
+
+**精度の実測**（2026-10-01、全国224,517件）: 番地レベル（住居・街区・地番）が69.7%（住居43.8%、街区5.4%、地番14.7%、地番の枝番なし5.8%）、町丁目が28.4%、判定不能が1.9%。東京都は番地レベル85%、判定不能0.4%。番地レベルが低いのは京都府（18%、通り名の住所が多く住居表示が少ない）、愛知県（31%）、岐阜県（32%）。地番の座標は法務省地図が電子化された地域にしかなく（千代田区は地番の約1%、八王子市は約17%）、そうした地域では町丁目がオープンデータで得られる上限になる。判定不能が多いのは宮崎県（15%）で、ABRに町字が載っていない（宮崎市大塚町など）、小字の名前が住所と合わない（「熊野正蓮寺1番地」に対しABRは「正蓮寺二番」）といった、元データ側の差による。測地系はJGD2000とJGD2011が混在しているが、差は数メートル程度のため変換していない。
+
 ## 設計上の注意点
 
 - 地方厚生局データには開設者・管理者の氏名や指定年月日は含まれるが、法人番号のような構造化された運営法人IDは含まれない。`founder_name`は原本の表記（法人名＋代表者名が1文字列に混在することがある）をそのまま保持している。
 - 都道府県コードはあえて正規化せず、コード文字列のまま保持する方針を継続している。
 - 診療科目は時間帯付きの構造化データを持たない（旧`医療機能情報提供制度`データにあった診療時間・受付時間の情報は、地方厚生局データには存在しない）。
-- `latitude`/`longitude`はこのデータソースからは常にnullになる（座標情報自体が原本に存在しない）。将来ジオコーディングを行う場合のためカラムは残している。
+- `latitude`/`longitude`は原本に存在しないため、取込では書き込まない。`facilities:geocode`だけが書き込む。
 
 ## データソースの変遷
 

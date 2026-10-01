@@ -4,42 +4,50 @@ namespace App\Services\Address;
 
 use App\Enums\Prefecture;
 use App\Models\Municipality;
-use App\Services\Text\ItaijiNormalizer;
 
 final class MunicipalityResolver
 {
     /** @var array<string, array<string, string>> prefecture code => 正規化した市区町村名 => 市区町村コード（名前の長い順） */
     private array $namesByPrefecture = [];
 
-    public function __construct(private readonly ItaijiNormalizer $itaijiNormalizer) {}
+    public function __construct(private readonly AddressMatchingNormalizer $normalizer) {}
 
     /**
-     * Finds the municipality an address starts with. Addresses in the
-     * source data omit the prefecture, so the match is scoped to
-     * $prefectureCode, and the longest name wins so that 札幌市中央区 beats
-     * 札幌市 and 大町町 beats 大町. Names are compared in the same
-     * normalized spelling as the address (全角半角・異体字・ケ/ヶ).
-     *
-     * Returns null when no municipality matches.
+     * Finds the municipality an address starts with. Returns null when no
+     * municipality matches.
      */
     public function resolve(string $prefectureCode, string $address): ?string
     {
+        return $this->match($prefectureCode, $address)['code'] ?? null;
+    }
+
+    /**
+     * Finds the municipality an address starts with, and returns the rest
+     * of the address after it (in AddressMatchingNormalizer's spelling).
+     * Addresses in the source data omit the prefecture, so the match is
+     * scoped to $prefectureCode, and the longest name wins so that
+     * 札幌市中央区 beats 札幌市 and 大町町 beats 大町.
+     *
+     * @return array{code: string, remainder: string}|null
+     */
+    public function match(string $prefectureCode, string $address): ?array
+    {
         $names = $this->names($prefectureCode);
-        $address = $this->normalize($address);
+        $address = $this->normalizer->normalize($address);
         $prefectureLabel = Prefecture::tryFrom($prefectureCode)?->label();
 
         if ($prefectureLabel !== null && str_starts_with($address, $prefectureLabel)) {
             $address = substr($address, strlen($prefectureLabel));
         }
 
-        $code = $this->longestPrefixMatch($names, $address);
+        $match = $this->longestPrefixMatch($names, $address);
 
         // 離島の住所は「八丈島八丈町…」のように島名が市区町村名の前に付く。
-        if ($code === null && ($position = mb_strpos($address, '島')) !== false && $position < 6) {
-            $code = $this->longestPrefixMatch($names, mb_substr($address, $position + 1));
+        if ($match === null && ($position = mb_strpos($address, '島')) !== false && $position < 6) {
+            $match = $this->longestPrefixMatch($names, mb_substr($address, $position + 1));
         }
 
-        return $code;
+        return $match;
     }
 
     /**
@@ -52,12 +60,13 @@ final class MunicipalityResolver
 
     /**
      * @param  array<string, string>  $names
+     * @return array{code: string, remainder: string}|null
      */
-    private function longestPrefixMatch(array $names, string $address): ?string
+    private function longestPrefixMatch(array $names, string $address): ?array
     {
         foreach ($names as $name => $code) {
             if (str_starts_with($address, $name)) {
-                return $code;
+                return ['code' => $code, 'remainder' => substr($address, strlen($name))];
             }
         }
 
@@ -85,7 +94,7 @@ final class MunicipalityResolver
         $withoutCounty = [];
 
         foreach (Municipality::query()->where('prefecture_code', $prefectureCode)->pluck('name', 'code') as $code => $name) {
-            $name = $this->normalize($name);
+            $name = $this->normalizer->normalize($name);
             $names[$name] = (string) $code;
 
             if (preg_match('/^.+?郡(.+)$/u', $name, $matches) === 1) {
@@ -102,12 +111,5 @@ final class MunicipalityResolver
         uksort($names, fn (string $a, string $b): int => mb_strlen($b) <=> mb_strlen($a));
 
         return $names;
-    }
-
-    private function normalize(string $value): string
-    {
-        $value = $this->itaijiNormalizer->normalize($value);
-
-        return str_replace('ケ', 'ヶ', $value);
     }
 }

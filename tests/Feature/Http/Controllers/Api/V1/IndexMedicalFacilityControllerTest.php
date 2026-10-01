@@ -3,6 +3,7 @@
 namespace Tests\Feature\Http\Controllers\Api\V1;
 
 use App\Enums\DepartmentBaseCategory;
+use App\Enums\GeocodeLevel;
 use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityStatus;
 use App\Enums\RhbBureau;
@@ -50,6 +51,49 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $response->assertJsonPath('data.0.id', $chiyoda->id);
         $response->assertJsonPath('data.0.municipality', ['code' => '13101', 'label' => '千代田区']);
         $this->assertNull($this->getJson("/api/v1/medical-facilities/{$unknown->id}")->json('data.municipality'));
+    }
+
+    public function test_nearby_search_returns_facilities_within_the_radius_nearest_first(): void
+    {
+        $tokyoStation = ['latitude' => 35.681236, 'longitude' => 139.767125];
+        $far = MedicalFacility::factory()->create(['latitude' => 35.689592, 'longitude' => 139.691301, 'geocode_level' => GeocodeLevel::Block]);
+        $near = MedicalFacility::factory()->create(['latitude' => 35.681500, 'longitude' => 139.767500, 'geocode_level' => GeocodeLevel::Residence]);
+        $middle = MedicalFacility::factory()->create(['latitude' => 35.676000, 'longitude' => 139.763000, 'geocode_level' => GeocodeLevel::Town]);
+        MedicalFacility::factory()->create(['latitude' => null, 'longitude' => null]);
+
+        $response = $this->getJson('/api/v1/medical-facilities?'.http_build_query([...$tokyoStation, 'radius' => 1000]));
+
+        $response->assertOk();
+        $this->assertSame([$near->id, $middle->id], array_column($response->json('data'), 'id'));
+        $response->assertJsonPath('data.0.location', ['latitude' => 35.6815, 'longitude' => 139.7675, 'level' => ['code' => 1, 'label' => '住居']]);
+        $this->assertEqualsWithDelta(45, $response->json('data.0.distance'), 5);
+
+        $wider = $this->getJson('/api/v1/medical-facilities?'.http_build_query([...$tokyoStation, 'radius' => 10000]));
+        $this->assertSame([$near->id, $middle->id, $far->id], array_column($wider->json('data'), 'id'));
+    }
+
+    public function test_nearby_search_honors_an_explicit_sort(): void
+    {
+        $older = MedicalFacility::factory()->create(['latitude' => 35.676000, 'longitude' => 139.763000, 'geocode_level' => GeocodeLevel::Town, 'designated_on' => '2000-01-01']);
+        $newer = MedicalFacility::factory()->create(['latitude' => 35.681500, 'longitude' => 139.767500, 'geocode_level' => GeocodeLevel::Town, 'designated_on' => '2020-01-01']);
+
+        $response = $this->getJson('/api/v1/medical-facilities?latitude=35.681236&longitude=139.767125&sort=designated_on');
+
+        $this->assertSame([$older->id, $newer->id], array_column($response->json('data'), 'id'));
+    }
+
+    public function test_distance_is_only_returned_for_nearby_search(): void
+    {
+        MedicalFacility::factory()->create();
+
+        $this->getJson('/api/v1/medical-facilities')->assertOk()->assertJsonMissingPath('data.0.distance');
+    }
+
+    public function test_latitude_and_longitude_must_be_given_together_and_within_japan(): void
+    {
+        $this->getJson('/api/v1/medical-facilities?latitude=35.68')->assertUnprocessable()->assertJsonValidationErrors('longitude');
+        $this->getJson('/api/v1/medical-facilities?latitude=0&longitude=0')->assertUnprocessable()->assertJsonValidationErrors(['latitude', 'longitude']);
+        $this->getJson('/api/v1/medical-facilities?latitude=35.68&longitude=139.76&radius=50000')->assertUnprocessable()->assertJsonValidationErrors('radius');
     }
 
     public function test_municipality_code_must_be_five_digits(): void
@@ -113,7 +157,7 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $response = $this->getJson('/api/v1/medical-facilities');
 
         $response->assertOk();
-        $response->assertJsonPath('meta.attribution.municipality_source.url', 'https://catalog.registries.digital.go.jp/rc/dataset/ba-o1-000000_g2-000002');
+        $response->assertJsonPath('meta.attribution.address_source.url', 'https://catalog.registries.digital.go.jp/rc/dataset/');
         $response->assertJsonPath('meta.attribution.notice', '本APIのデータは、各地方厚生局が公開する「保険医療機関・保険薬局の指定一覧」を加工して作成しています。');
         $response->assertJsonCount(8, 'meta.attribution.sources');
         $response->assertJsonPath('meta.attribution.sources.0.bureau', '北海道厚生局');

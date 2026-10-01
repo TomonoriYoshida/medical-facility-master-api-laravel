@@ -20,6 +20,7 @@ scheduler は毎日（日本時間）次の順に実行します。
 |---|---|---|
 | 05:00 | `rhb:download` | 各局の一覧ページを確認し、新しい版を取得 |
 | 05:30 | `rhb:import` | 取込ジョブをキューに投入（worker が実行） |
+| 06:30 | `facilities:geocode` | 新規・移転した施設の座標を住所から求める（アドレス・ベース・レジストリのファイルを `storage-app` ボリュームに保存し、変わったものだけ再取得） |
 | 07:00 | `rhb:status` | すべての局・カテゴリが取込済みで最新かを確認 |
 | 07:10 | `rhb:export` | 一括ダウンロードのファイルを作成（データが変わったときだけ。全国で約1分半、ファイルは約50MB） |
 | 00:15 | `access-log:check` | 前日のアクセスログを集計し、攻撃の疑いがあれば通知（「8. 不審なアクセスの確認と遮断」） |
@@ -113,8 +114,11 @@ docker compose up -d
 ```bash
 docker compose exec scheduler php artisan rhb:download
 docker compose exec app php artisan rhb:import --wait
+docker compose exec app php artisan facilities:geocode   # 座標を付与
 docker compose exec app php artisan rhb:export        # 一括ダウンロードのファイルを作成
 ```
+
+- `facilities:geocode` は、初回にアドレス・ベース・レジストリのファイルを取得します全国で約3.4GB、初回は1時間前後。翌日以降は新規・移転した施設だけを処理します（全国に散らばった200件で約8分。対象の施設がない日はすぐ終わります）。PHP の既定のメモリ上限（128MB）で動きます。ファイルは `storage-app` ボリュームに残り、翌日以降は変わったものだけを取得します。
 
 以降は scheduler が毎日 05:00 / 05:30（日本時間）に自動で実行します。
 
@@ -161,6 +165,17 @@ docker compose run --rm app php artisan rhb:export --force
 ```
 
 - `facilities:assign-municipalities` は施設の `updated_at` を変えないため、毎日の `rhb:export` は「データが変わっていない」と判断して一括ダウンロードを作り直しません。`--force` で作り直して、ファイルにも市区町村の列を反映させます。
+
+### 座標の付与（初回）
+
+座標の機能を含む版へ初めて更新したときは、`migrate` の後に次を実行します（所要時間とディスクは「初回のデータ取込」の注記を参照）。座標が変わった施設は `updated_at` が更新されるため、一括ダウンロードは翌朝の `rhb:export` で自動的に作り直されます。すぐに反映する場合は `rhb:export` も実行します。
+
+```bash
+docker compose run --rm app php artisan facilities:geocode
+```
+
+- 以降は scheduler が毎日 06:30 に、新規・移転した施設だけを処理します。
+- アドレス・ベース・レジストリの位置データは拡充されていくため、ときどき（数か月に1回程度）`facilities:geocode --all` で全施設を付け直すと、町丁目レベルだった施設が番地レベルになることがあります。
 
 ## 4. バックアップ
 

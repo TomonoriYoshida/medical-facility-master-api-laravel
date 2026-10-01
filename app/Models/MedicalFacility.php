@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\DepartmentBaseCategory;
+use App\Enums\GeocodeLevel;
 use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityStatus;
 use App\Enums\RhbBureau;
@@ -68,6 +69,7 @@ class MedicalFacility extends Model
             'status' => MedicalFacilityStatus::class,
             'latitude' => 'decimal:6',
             'longitude' => 'decimal:6',
+            'geocode_level' => GeocodeLevel::class,
             'designated_on' => 'date',
             'designation_history' => 'array',
             'bed_counts' => 'array',

@@ -17,6 +17,11 @@ class MedicalFacilityController extends Controller
 {
     use ProvidesAttribution;
 
+    private const int DEFAULT_RADIUS = 1000;
+
+    /** Meters per degree of latitude (and of longitude at the equator). */
+    private const float METERS_PER_DEGREE = 111_320;
+
     public function __construct(
         private readonly ItaijiNormalizer $itaijiNormalizer,
         private readonly AddressNormalizer $addressNormalizer,
@@ -26,7 +31,7 @@ class MedicalFacilityController extends Controller
      * 施設一覧・検索
      *
      * 医療施設マスタをページネーション付きで返します。`q` は施設名・住所の全角半角/異体字ゆれを
-     * 吸収したあいまい検索です。
+     * 吸収したあいまい検索です。`latitude`・`longitude` を指定すると、`radius` 以内の施設を近い順に返します。
      */
     public function index(MedicalFacilityIndexRequest $request): AnonymousResourceCollection
     {
@@ -46,6 +51,13 @@ class MedicalFacilityController extends Controller
             // updated_at is stored in UTC; the given offset, if any, is honored.
             ->when($filters['updated_since'] ?? null, fn ($query, $since) => $query->where('updated_at', '>=', Carbon::parse($since)->utc()))
             ->when($filters['designation_reason'] ?? null, fn ($query, $reason) => $query->whereJsonContains('designation_history', ['reason' => $reason]))
+            ->when(isset($filters['latitude'], $filters['longitude']), fn ($query) => $this->applyNearby(
+                $query,
+                (float) $filters['latitude'],
+                (float) $filters['longitude'],
+                (int) ($filters['radius'] ?? self::DEFAULT_RADIUS),
+                orderByDistance: ! isset($filters['sort']),
+            ))
             ->when(
                 $filters['sort'] ?? null,
                 fn ($query, $sort) => match ($sort) {
@@ -89,6 +101,30 @@ class MedicalFacilityController extends Controller
             $query->where('name_normalized', 'like', $namePattern)
                 ->orWhere('address_normalized', 'like', $addressPattern);
         });
+    }
+
+    /**
+     * Facilities within $radius meters, with their distance as `distance`.
+     * A latitude/longitude range narrows the rows first (using the
+     * (latitude, longitude) index), then ST_Distance_Sphere measures the
+     * real distance.
+     *
+     * @param  Builder<MedicalFacility>  $query
+     * @return Builder<MedicalFacility>
+     */
+    private function applyNearby(Builder $query, float $latitude, float $longitude, int $radius, bool $orderByDistance): Builder
+    {
+        $latitudeDelta = $radius / self::METERS_PER_DEGREE;
+        $longitudeDelta = $radius / (self::METERS_PER_DEGREE * cos(deg2rad($latitude)));
+        $distance = 'ST_Distance_Sphere(POINT(longitude, latitude), POINT(?, ?))';
+
+        return $query
+            ->select('medical_facilities.*')
+            ->selectRaw("{$distance} AS distance", [$longitude, $latitude])
+            ->whereBetween('latitude', [$latitude - $latitudeDelta, $latitude + $latitudeDelta])
+            ->whereBetween('longitude', [$longitude - $longitudeDelta, $longitude + $longitudeDelta])
+            ->whereRaw("{$distance} <= ?", [$longitude, $latitude, $radius])
+            ->when($orderByDistance, fn (Builder $query) => $query->orderBy('distance'));
     }
 
     /**

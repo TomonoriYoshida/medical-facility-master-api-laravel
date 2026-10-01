@@ -17,7 +17,8 @@ class MedicalFacilityObserver
 
     /**
      * Keep name_normalized/address_normalized/municipality_code in sync
-     * whenever their source columns change.
+     * whenever their source columns change, and drop the location of an
+     * address that changed.
      *
      * Note: DatabaseSeeder uses WithoutModelEvents, so any future bulk
      * importer that reuses that trait (or otherwise bypasses Eloquent
@@ -32,6 +33,17 @@ class MedicalFacilityObserver
 
         if ($medicalFacility->isDirty('address')) {
             $medicalFacility->address_normalized = $this->addressNormalizer->normalize($medicalFacility->address);
+        }
+
+        // The old location no longer applies. Clearing geocoded_address (rather
+        // than relying on it differing from address) makes facilities:geocode
+        // pick the facility up even when only the character width changed,
+        // which the column's collation would compare as equal.
+        if ($medicalFacility->isDirty('address') && ! $medicalFacility->isDirty(['latitude', 'longitude'])) {
+            $medicalFacility->latitude = null;
+            $medicalFacility->longitude = null;
+            $medicalFacility->geocode_level = null;
+            $medicalFacility->geocoded_address = null;
         }
 
         if ($medicalFacility->isDirty(['prefecture_code', 'address'])) {

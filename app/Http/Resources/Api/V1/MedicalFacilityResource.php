@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Api\V1;
 
 use App\Enums\DepartmentBaseCategory;
+use App\Enums\GeocodeLevel;
 use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityStatus;
 use App\Enums\Prefecture;
@@ -42,6 +43,17 @@ class MedicalFacilityResource extends JsonResource
             ],
             'postal_code' => $this->postal_code,
             'address' => $this->address,
+            /**
+             * 住所から求めた座標（世界測地系）。`level` はその精度（住居・街区・地番・町丁目など）。
+             * 求められなかった施設はnull
+             */
+            'location' => $this->latitude === null || $this->longitude === null || $this->geocode_level === null ? null : [
+                'latitude' => (float) $this->latitude,
+                'longitude' => (float) $this->longitude,
+                'level' => $this->codeAndLabel($this->geocode_level),
+            ],
+            /** 検索地点からの距離（メートル）。`latitude`・`longitude` を指定した検索のときだけ含まれる */
+            'distance' => $this->when($this->resource->getAttribute('distance') !== null, fn (): int => (int) round((float) $this->resource->getAttribute('distance'))),
             'phone_number' => $this->phone_number,
             'designated_on' => $this->designated_on?->toDateString(),
             'designation_history' => $this->designation_history,
@@ -62,7 +74,7 @@ class MedicalFacilityResource extends JsonResource
      *
      * @return array{code: int|string, label: string}
      */
-    private function codeAndLabel(InstitutionType|MedicalFacilityStatus|RhbBureau|DepartmentBaseCategory|Prefecture $enum): array
+    private function codeAndLabel(InstitutionType|MedicalFacilityStatus|RhbBureau|DepartmentBaseCategory|Prefecture|GeocodeLevel $enum): array
     {
         return [
             'code' => $enum->value,
