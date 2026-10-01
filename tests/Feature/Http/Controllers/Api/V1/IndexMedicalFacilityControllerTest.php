@@ -263,6 +263,50 @@ class IndexMedicalFacilityControllerTest extends TestCase
     }
 
     /**
+     * @return array<string, array{string}>
+     */
+    public static function separatedWordsProvider(): array
+    {
+        return [
+            'half-width space' => ['札幌 眼科'],
+            'full-width space' => ['札幌　眼科'],
+            'repeated and surrounding spaces' => ['  札幌 　 眼科  '],
+        ];
+    }
+
+    #[DataProvider('separatedWordsProvider')]
+    public function test_search_with_several_words_requires_each_in_the_name_or_address(string $term): void
+    {
+        $matching = MedicalFacility::factory()->create(['name' => '中央眼科', 'address' => '札幌市中央区北1条']);
+        MedicalFacility::factory()->create(['name' => '中央眼科', 'address' => '函館市本町']);
+        MedicalFacility::factory()->create(['name' => '札幌内科', 'address' => '札幌市北区']);
+
+        $response = $this->getJson('/api/v1/medical-facilities?q='.urlencode($term));
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $matching->id);
+    }
+
+    public function test_search_words_may_all_be_in_the_name(): void
+    {
+        $matching = MedicalFacility::factory()->create(['name' => '札幌中央眼科', 'address' => '石狩市花川']);
+
+        $response = $this->getJson('/api/v1/medical-facilities?q='.urlencode('眼科 札幌'));
+
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $matching->id);
+    }
+
+    public function test_returns_422_for_more_than_five_search_words(): void
+    {
+        $this->getJson('/api/v1/medical-facilities?q='.urlencode('a b c d e'))->assertOk();
+        $this->getJson('/api/v1/medical-facilities?q='.urlencode('a b c d e f'))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('q');
+    }
+
+    /**
      * @return array<string, array{string, string}>
      */
     public static function likeMetacharacterProvider(): array
