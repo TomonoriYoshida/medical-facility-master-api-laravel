@@ -241,7 +241,7 @@ GET /api/v1/stats/facility-events?group_by=month&event_type=2&occurred_from=2025
 ### 共通
 
 - **仕様書**: 起動後に `/docs/api`（対話的に試せるUI）と `/docs/api.json`（OpenAPI）で確認できます。
-- **レート制限**: IPアドレスごとに1分あたり60回です（`API_RATE_LIMIT_PER_MINUTE` で変更可）。
+- **レート制限**: IPアドレスごとに1分あたり60回です（`API_RATE_LIMIT_PER_MINUTE` で変更可）。集計API は、新しい条件で集計し直す呼び出しだけをさらに1分あたり30回に制限します（1時間キャッシュされた結果は数えません。`STATS_COMPUTATIONS_PER_MINUTE` で変更可）。
 - **出典表示**: すべてのレスポンスの `meta.attribution` に、データの出典・利用条件（PDL1.0）・免責を含めています（後述の「データの出典・利用条件」を参照）。
 
 ## データの取得・更新の仕組み
