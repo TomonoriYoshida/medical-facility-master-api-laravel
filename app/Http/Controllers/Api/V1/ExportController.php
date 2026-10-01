@@ -56,12 +56,13 @@ class ExportController extends Controller
     public function show(Request $request, string $filename): BinaryFileResponse|JsonResponse
     {
         $manifest = $this->exporter->manifest();
-        $file = $this->exporter->file($filename);
-        $path = $this->exporter->pathOf($filename);
+        $file = $manifest === null ? null : $this->exporter->file($manifest, $filename);
 
-        if ($manifest === null || $file === null || $path === null) {
+        if ($manifest === null || $file === null) {
             return response()->json(['message' => 'ファイルが見つかりません。'], 404);
         }
+
+        $path = $this->exporter->pathOf($manifest, $filename);
 
         $response = response()->download($path, $filename, ['Content-Type' => 'application/gzip']);
         $response->setEtag($file['sha256']);

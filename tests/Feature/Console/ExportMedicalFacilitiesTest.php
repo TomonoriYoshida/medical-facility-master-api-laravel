@@ -110,7 +110,7 @@ class ExportMedicalFacilitiesTest extends TestCase
 
         $manifest = $this->manifest();
         $file = collect($manifest['files'])->firstWhere('name', 'medical-facilities-13.csv.gz');
-        $path = Storage::disk('local')->path('exports/current/medical-facilities-13.csv.gz');
+        $path = Storage::disk('local')->path("exports/sets/{$manifest['set']}/medical-facilities-13.csv.gz");
         $this->assertSame('2026-10-01T05:30:00.000000Z', $manifest['data_updated_at']);
         $this->assertSame(['code' => '13', 'label' => '東京都'], $file['prefecture']);
         $this->assertSame(1, $file['records']);
@@ -143,12 +143,48 @@ class ExportMedicalFacilitiesTest extends TestCase
     {
         MedicalFacility::factory()->create(['prefecture_code' => '13']);
         $this->artisan('rhb:export')->assertExitCode(0);
+        $first = $this->manifest()['set'];
 
         $this->artisan('rhb:export', ['--force' => true])->assertExitCode(0);
+        $second = $this->manifest()['set'];
 
-        Storage::disk('local')->assertExists('exports/previous/medical-facilities-13.csv.gz');
-        Storage::disk('local')->assertExists('exports/current/medical-facilities-13.csv.gz');
-        Storage::disk('local')->assertMissing('exports/building');
+        $this->assertNotSame($first, $second);
+        Storage::disk('local')->assertExists("exports/sets/{$first}/medical-facilities-13.csv.gz");
+        Storage::disk('local')->assertExists("exports/sets/{$second}/medical-facilities-13.csv.gz");
+        Storage::disk('local')->assertMissing('exports/manifest.json.tmp');
+
+        $this->travel(1)->seconds();
+        $this->artisan('rhb:export', ['--force' => true])->assertExitCode(0);
+
+        Storage::disk('local')->assertMissing("exports/sets/{$first}");
+        Storage::disk('local')->assertExists("exports/sets/{$second}");
+    }
+
+    public function test_a_failed_runs_set_and_the_earlier_layout_are_cleaned_up(): void
+    {
+        MedicalFacility::factory()->create(['prefecture_code' => '13']);
+        Storage::disk('local')->put('exports/sets/20261001000000-failed/medical-facilities-13.csv.gz', 'partial');
+        Storage::disk('local')->put('exports/current/manifest.json', '{}');
+        Storage::disk('local')->put('exports/previous/manifest.json', '{}');
+
+        $this->artisan('rhb:export')->assertExitCode(0);
+
+        Storage::disk('local')->assertMissing('exports/sets/20261001000000-failed');
+        Storage::disk('local')->assertMissing('exports/current');
+        Storage::disk('local')->assertMissing('exports/previous');
+    }
+
+    public function test_csv_text_that_a_spreadsheet_would_run_as_a_formula_is_quoted(): void
+    {
+        MedicalFacility::factory()->create(['prefecture_code' => '13', 'name' => '=HYPERLINK("http://example.com")', 'address' => '-1+1']);
+
+        $this->artisan('rhb:export')->assertExitCode(0);
+
+        $rows = $this->csvRows('medical-facilities-13.csv.gz');
+        $columns = array_flip(FacilityExporter::CSV_COLUMNS);
+        $this->assertSame('\'=HYPERLINK("http://example.com")', $rows[1][$columns['name']]);
+        $this->assertSame('\'-1+1', $rows[1][$columns['address']]);
+        $this->assertSame('=HYPERLINK("http://example.com")', $this->jsonLines('medical-facilities-13.jsonl.gz')[0]['name']);
     }
 
     /**
@@ -156,7 +192,7 @@ class ExportMedicalFacilitiesTest extends TestCase
      */
     private function manifest(): array
     {
-        return json_decode((string) Storage::disk('local')->get('exports/current/manifest.json'), true);
+        return json_decode((string) Storage::disk('local')->get('exports/manifest.json'), true);
     }
 
     /**
@@ -164,7 +200,7 @@ class ExportMedicalFacilitiesTest extends TestCase
      */
     private function jsonLines(string $filename): array
     {
-        $content = gzdecode((string) Storage::disk('local')->get("exports/current/{$filename}"));
+        $content = gzdecode((string) Storage::disk('local')->get("exports/sets/{$this->manifest()['set']}/{$filename}"));
 
         return array_map(fn (string $line): array => json_decode($line, true), array_values(array_filter(explode("\n", $content))));
     }
@@ -175,7 +211,7 @@ class ExportMedicalFacilitiesTest extends TestCase
     private function csvRows(string $filename): array
     {
         $handle = fopen('php://memory', 'r+');
-        fwrite($handle, gzdecode((string) Storage::disk('local')->get("exports/current/{$filename}")));
+        fwrite($handle, gzdecode((string) Storage::disk('local')->get("exports/sets/{$this->manifest()['set']}/{$filename}")));
         rewind($handle);
 
         $rows = [];

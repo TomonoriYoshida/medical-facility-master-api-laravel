@@ -68,6 +68,6 @@ class SecurityHardeningTest extends TestCase
 
     public function test_local_disk_files_are_not_served_over_http(): void
     {
-        $this->get('/storage/exports/current/manifest.json')->assertNotFound();
+        $this->get('/storage/exports/manifest.json')->assertNotFound();
     }
 }
