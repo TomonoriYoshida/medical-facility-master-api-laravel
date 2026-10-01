@@ -4,6 +4,7 @@ namespace App\Services\Population;
 
 use App\Models\MunicipalityPopulation;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -17,14 +18,15 @@ final class MunicipalityPopulationImporter
     ) {}
 
     /**
-     * @return array{as_of: Carbon, imported: int}|null null when that edition is already imported (unless $force)
+     * @return array{as_of: Carbon, imported: int}|null null when that edition (or a newer one) is already imported, unless $force
      */
     public function import(bool $force = false): ?array
     {
         $latest = $this->client->latest();
         $current = MunicipalityPopulation::query()->max('as_of');
 
-        if (! $force && $current !== null && Carbon::parse($current)->isSameDay($latest['as_of'])) {
+        // Never replace a newer edition with an older one the page still lists.
+        if (! $force && $current !== null && $latest['as_of']->lte(Carbon::parse($current))) {
             return null;
         }
 
@@ -55,6 +57,8 @@ final class MunicipalityPopulationImporter
             MunicipalityPopulation::query()->delete();
             MunicipalityPopulation::query()->insert($rows);
         });
+
+        Cache::forever(MunicipalityPopulation::IMPORTED_AT_CACHE_KEY, $now->getTimestamp());
 
         return ['as_of' => $latest['as_of'], 'imported' => count($rows)];
     }

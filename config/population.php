@@ -18,8 +18,6 @@ return [
 
     'index_url' => 'https://www.soumu.go.jp/main_sosiki/jichi_gyousei/daityo/jinkou_jinkoudoutai-setaisuu.html',
 
-    'base_url' => 'https://www.soumu.go.jp',
-
     // A file with fewer municipalities than this was misread (Japan has
     // ~1,900 including the wards of designated cities); the import fails and
     // keeps the previous edition.

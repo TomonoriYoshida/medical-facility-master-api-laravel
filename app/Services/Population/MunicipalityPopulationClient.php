@@ -2,14 +2,11 @@
 
 namespace App\Services\Population;
 
+use App\Services\Http\OpenDataHttp;
 use App\Services\Rhb\Import\RhbXlsxReader;
 use Generator;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
 use RuntimeException;
-use Throwable;
 
 /**
  * Finds the latest 住民基本台帳人口 file by municipality on the 総務省 index
@@ -19,40 +16,55 @@ final class MunicipalityPopulationClient
 {
     private const string DIRECTORY = 'population';
 
-    private const string USER_AGENT = 'MedicalFacilityMasterAPI/1.0 (+https://github.com/TomonoriYoshida/medical-facility-master-api-laravel)';
-
     /** 令和1年 = 2019. */
     private const int REIWA_OFFSET = 2018;
+
+    public function __construct(
+        private readonly OpenDataHttp $http,
+    ) {}
 
     /**
      * The latest file of the whole population (【総計】, not 日本人住民 or
      * 外国人住民) by municipality, and the January 1 it is as of. Its link
      * reads e.g. 「【総計】令和8年住民基本台帳人口・世帯数、令和7年人口動態（市区町村別）」;
-     * the age-group file next to it (年齢階級別) is not it.
+     * the age-group file next to it (年齢階級別) is not it. Earlier editions
+     * may stay listed on the page, in any order, so the years are compared.
      *
      * @return array{as_of: Carbon, url: string}
      */
     public function latest(): array
     {
-        $html = $this->utf8($this->get(config()->string('population.index_url')));
+        $indexUrl = config()->string('population.index_url');
+        $html = $this->utf8($this->http->get($indexUrl)->body());
+        $latest = null;
 
-        preg_match_all('#<a[^>]+href="([^"]+\.xlsx?)"[^>]*>(.*?)</a>#su', $html, $links, PREG_SET_ORDER);
+        // Only .xlsx: RhbXlsxReader cannot read the older binary .xls format.
+        preg_match_all('#<a[^>]+href="([^"]+\.xlsx)"[^>]*>(.*?)</a>#siu', $html, $links, PREG_SET_ORDER);
 
         foreach ($links as [, $href, $label]) {
             $text = trim(strip_tags($label));
 
-            if (str_contains($text, '【総計】') && str_contains($text, '人口・世帯数') && str_contains($text, '市区町村別')
-                && ! str_contains($text, '年齢') && preg_match('/令和(\d+|元)年/u', $text, $year) === 1) {
-                $reiwa = $year[1] === '元' ? 1 : (int) $year[1];
+            if (! str_contains($text, '【総計】') || ! str_contains($text, '人口・世帯数') || ! str_contains($text, '市区町村別')
+                || str_contains($text, '年齢') || preg_match('/令和([0-9０-９]+|元)年/u', $text, $year) !== 1) {
+                continue;
+            }
 
-                return [
-                    'as_of' => Carbon::parse((self::REIWA_OFFSET + $reiwa).'-01-01'),
-                    'url' => str_starts_with($href, 'http') ? $href : rtrim(config()->string('population.base_url'), '/').$href,
-                ];
+            // Government pages often write the year in full-width digits (令和８年).
+            $reiwa = $year[1] === '元' ? 1 : (int) mb_convert_kana($year[1], 'n');
+
+            if ($latest === null || $reiwa > $latest['reiwa']) {
+                $latest = ['reiwa' => $reiwa, 'href' => html_entity_decode($href)];
             }
         }
 
-        throw new RuntimeException('No 住民基本台帳人口 file by municipality was found on '.config()->string('population.index_url').'.');
+        if ($latest === null) {
+            throw new RuntimeException("No 住民基本台帳人口 file by municipality was found on {$indexUrl}.");
+        }
+
+        return [
+            'as_of' => Carbon::parse((self::REIWA_OFFSET + $latest['reiwa']).'-01-01'),
+            'url' => $this->resolveUrl($latest['href'], $indexUrl),
+        ];
     }
 
     /**
@@ -60,23 +72,7 @@ final class MunicipalityPopulationClient
      */
     public function download(string $url): string
     {
-        $disk = Storage::disk('local');
-        $path = self::DIRECTORY.'/'.basename((string) parse_url($url, PHP_URL_PATH));
-        $disk->makeDirectory(self::DIRECTORY);
-
-        $response = Http::withHeaders(['User-Agent' => self::USER_AGENT])
-            ->timeout(120)
-            ->retry(3, 1000, fn (?Throwable $exception): bool => $exception instanceof ConnectionException, throw: false)
-            ->sink($disk->path($path))
-            ->get($url);
-
-        if (! $response->successful()) {
-            $disk->delete($path);
-
-            throw new RuntimeException("Downloading {$url} failed with HTTP {$response->status()}.");
-        }
-
-        return $disk->path($path);
+        return $this->http->download($url, self::DIRECTORY, timeout: 120);
     }
 
     /**
@@ -90,18 +86,12 @@ final class MunicipalityPopulationClient
     public function populations(string $xlsxPath): Generator
     {
         $populationColumn = null;
-        $previousRow = [];
+        $headerRows = [];
 
         foreach ((new RhbXlsxReader($xlsxPath))->rows() as $row) {
             if ($populationColumn === null) {
-                // The header: a row reading 男/女/計 under one reading 人口
-                // (repeated per column, or once if merged, so look leftwards).
-                $total = array_search('計', $row, true);
-
-                if ($total !== false && $this->nearestToTheLeft($previousRow, $total) === '人口') {
-                    $populationColumn = $total;
-                }
-                $previousRow = $row;
+                $populationColumn = $this->populationColumn($row, $headerRows);
+                $headerRows[] = $row;
 
                 continue;
             }
@@ -132,6 +122,59 @@ final class MunicipalityPopulationClient
     }
 
     /**
+     * The header: a row reading 計 under 人口 in some row above it (repeated
+     * per column, or once over 男 / 女 / 計 if merged, so look leftwards).
+     * Every 計 is tried, since other groups such as 世帯数 may have their own.
+     *
+     * @param  array<int, string>  $row
+     * @param  list<array<int, string>>  $rowsAbove
+     */
+    private function populationColumn(array $row, array $rowsAbove): ?int
+    {
+        foreach (array_keys($row, '計', true) as $column) {
+            foreach ($rowsAbove as $above) {
+                if ($this->nearestToTheLeft($above, $column) === '人口') {
+                    return $column;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolves a link on the index page against the page's own URL.
+     */
+    private function resolveUrl(string $href, string $pageUrl): string
+    {
+        if (preg_match('#^https?://#i', $href) === 1) {
+            return $href;
+        }
+
+        $scheme = (string) parse_url($pageUrl, PHP_URL_SCHEME);
+        $origin = $scheme.'://'.parse_url($pageUrl, PHP_URL_HOST);
+
+        if (str_starts_with($href, '//')) {
+            return "{$scheme}:{$href}";
+        }
+
+        $path = str_starts_with($href, '/')
+            ? $href
+            : preg_replace('#[^/]*$#', '', (string) parse_url($pageUrl, PHP_URL_PATH)).$href;
+        $segments = [];
+
+        foreach (explode('/', $path) as $segment) {
+            match ($segment) {
+                '..' => array_pop($segments),
+                '.' => null,
+                default => $segments[] = $segment,
+            };
+        }
+
+        return $origin.'/'.ltrim(implode('/', $segments), '/');
+    }
+
+    /**
      * The first non-empty cell at or left of $column.
      *
      * @param  array<int, string>  $row
@@ -145,16 +188,6 @@ final class MunicipalityPopulationClient
         }
 
         return null;
-    }
-
-    private function get(string $url): string
-    {
-        return Http::withHeaders(['User-Agent' => self::USER_AGENT])
-            ->timeout(60)
-            ->retry(3, 1000, fn (?Throwable $exception): bool => $exception instanceof ConnectionException)
-            ->get($url)
-            ->throw()
-            ->body();
     }
 
     /**
