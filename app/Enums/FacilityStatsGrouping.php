@@ -7,11 +7,11 @@ namespace App\Enums;
  */
 enum FacilityStatsGrouping: string
 {
-    /** The month of designated_on; every month in the requested range is returned. */
+    // The month of designated_on; every month in the requested range is returned.
     case Month = 'month';
 
     case Municipality = 'municipality';
 
-    /** One facility counts once per department category it has. */
+    // One facility counts once per department category it has.
     case DepartmentCategory = 'department_category';
 }
