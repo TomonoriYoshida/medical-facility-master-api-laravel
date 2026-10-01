@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
@@ -20,26 +21,27 @@ use RuntimeException;
  * a local copy can load it in one download instead of paging the API
  * (~2,250 requests for the whole country).
  *
- * Files are built in exports/building and only then swapped in for
- * exports/current, so a download never sees a half-written set; the
- * replaced set is kept as exports/previous so a download already in
- * progress can finish. A run is skipped when neither the data nor the scope
- * changed since the current set, which keeps each file's ETag stable.
+ * Each run writes a new set into its own exports/sets/{id} directory, and
+ * only then points exports/manifest.json at it. The manifest is replaced by
+ * a rename, which is atomic, so a request always sees one whole set and
+ * never a moment with none. The replaced set is kept until the next run so a
+ * download already in progress can finish. A run is skipped when neither
+ * the data nor the scope changed since the current set, which keeps each
+ * file's ETag stable.
  *
  * JSON Lines rows have exactly the shape of the API's facility resource.
  * CSV rows flatten it: codes and labels in separate columns, department
  * categories joined with "|", and the nested designation_history /
- * bed_counts as JSON text.
+ * bed_counts as JSON text. A text that a spreadsheet would read as a
+ * formula gets a leading quote (JSON Lines keep the original value).
  */
 final class FacilityExporter
 {
-    private const string CURRENT = 'exports/current';
+    private const string ROOT = 'exports';
 
-    private const string BUILDING = 'exports/building';
+    private const string SETS = 'exports/sets';
 
-    private const string PREVIOUS = 'exports/previous';
-
-    private const string MANIFEST = 'manifest.json';
+    private const string MANIFEST = 'exports/manifest.json';
 
     private const int CHUNK_SIZE = 1000;
 
@@ -64,24 +66,24 @@ final class FacilityExporter
      */
     public function manifest(): ?array
     {
-        $path = self::CURRENT.'/'.self::MANIFEST;
-
-        if (! Storage::disk('local')->exists($path)) {
+        if (! Storage::disk('local')->exists(self::MANIFEST)) {
             return null;
         }
 
-        return json_decode((string) Storage::disk('local')->get($path), true, flags: JSON_THROW_ON_ERROR);
+        return json_decode((string) Storage::disk('local')->get(self::MANIFEST), true, flags: JSON_THROW_ON_ERROR);
     }
 
     /**
-     * The current manifest's entry for a file, so that only generated files
-     * can ever be served.
+     * A manifest's entry for a file, so that only generated files can ever
+     * be served. Takes the manifest the caller read, so the entry and the
+     * path always come from the same set even if a new one is swapped in.
      *
+     * @param  array<string, mixed>  $manifest
      * @return array<string, mixed>|null
      */
-    public function file(string $filename): ?array
+    public function file(array $manifest, string $filename): ?array
     {
-        foreach ($this->manifest()['files'] ?? [] as $file) {
+        foreach ($manifest['files'] ?? [] as $file) {
             if (is_array($file) && ($file['name'] ?? null) === $filename) {
                 return $file;
             }
@@ -90,9 +92,12 @@ final class FacilityExporter
         return null;
     }
 
-    public function pathOf(string $filename): ?string
+    /**
+     * @param  array<string, mixed>  $manifest
+     */
+    public function pathOf(array $manifest, string $filename): string
     {
-        return $this->file($filename) !== null ? Storage::disk('local')->path(self::CURRENT.'/'.$filename) : null;
+        return Storage::disk('local')->path(self::SETS."/{$manifest['set']}/{$filename}");
     }
 
     /**
@@ -113,15 +118,14 @@ final class FacilityExporter
             return null;
         }
 
-        $disk = Storage::disk('local');
-        $disk->deleteDirectory(self::BUILDING);
-        $disk->makeDirectory(self::BUILDING);
+        $set = now()->format('YmdHis').'-'.Str::lower(Str::random(8));
+        Storage::disk('local')->makeDirectory(self::SETS."/{$set}");
 
-        $all = $this->openPair('all');
+        $all = $this->openPair($set, 'all');
         $files = [];
 
         foreach ($this->scope->prefectures() as $prefecture) {
-            $pair = $this->openPair($prefecture->value);
+            $pair = $this->openPair($set, $prefecture->value);
 
             $this->facilities()
                 ->where('prefecture_code', $prefecture->value)
@@ -139,15 +143,14 @@ final class FacilityExporter
         array_push($files, ...$this->closePair($all, null));
 
         $manifest = [
+            'set' => $set,
             'generated_at' => now()->toJSON(),
             'data_updated_at' => $dataUpdatedAt,
             'scope' => $scope,
             'files' => $files,
         ];
 
-        $disk->put(self::BUILDING.'/'.self::MANIFEST, json_encode($manifest, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-
-        $this->swapIn();
+        $this->swapIn($manifest, previousSet: $current['set'] ?? null);
 
         return $manifest;
     }
@@ -165,14 +168,15 @@ final class FacilityExporter
     /**
      * @return array{csv: ExportFile, jsonl: ExportFile}
      */
-    private function openPair(string $suffix): array
+    private function openPair(string $set, string $suffix): array
     {
-        $csv = new ExportFile(Storage::disk('local')->path(self::BUILDING."/medical-facilities-{$suffix}.csv.gz"));
+        $directory = self::SETS."/{$set}";
+        $csv = new ExportFile(Storage::disk('local')->path("{$directory}/medical-facilities-{$suffix}.csv.gz"));
         $csv->writeCsv(self::CSV_COLUMNS);
 
         return [
             'csv' => $csv,
-            'jsonl' => new ExportFile(Storage::disk('local')->path(self::BUILDING."/medical-facilities-{$suffix}.jsonl.gz")),
+            'jsonl' => new ExportFile(Storage::disk('local')->path("{$directory}/medical-facilities-{$suffix}.jsonl.gz")),
         ];
     }
 
@@ -183,7 +187,7 @@ final class FacilityExporter
     private function writeRow(array $pair, MedicalFacility $facility, array $row): void
     {
         $pair['jsonl']->writeLine(json_encode($row, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        $pair['csv']->writeCsv($this->csvRow($facility, $row), countsAsRecord: true);
+        $pair['csv']->writeCsv(array_map($this->neutralizeFormula(...), $this->csvRow($facility, $row)), countsAsRecord: true);
     }
 
     /**
@@ -216,6 +220,17 @@ final class FacilityExporter
     }
 
     /**
+     * A text starting with = + - @ (or a tab / carriage return) would run as
+     * a formula when the CSV is opened in a spreadsheet (CSV injection), so
+     * it gets a leading quote, as the frontend's CSV does. Numbers and the
+     * JSON columns never start with one of these.
+     */
+    private function neutralizeFormula(string|int|null $value): string|int|null
+    {
+        return is_string($value) && preg_match('/^[=+\-@\t\r]/', $value) === 1 ? "'{$value}" : $value;
+    }
+
+    /**
      * @param  array{csv: ExportFile, jsonl: ExportFile}  $pair
      * @return list<array<string, mixed>>
      */
@@ -240,20 +255,34 @@ final class FacilityExporter
     }
 
     /**
-     * Directory renames are atomic on one filesystem, and a download that
-     * already opened a file keeps reading it after its directory moves.
+     * Points the manifest at the new set with a rename (atomic on one
+     * filesystem), then deletes every other set except the one it replaced,
+     * which downloads already in progress may still be reading. Sets left
+     * by a failed run and the directories of the earlier layout
+     * (exports/current, previous, building) go too.
+     *
+     * @param  array<string, mixed>  $manifest
      */
-    private function swapIn(): void
+    private function swapIn(array $manifest, ?string $previousSet): void
     {
         $disk = Storage::disk('local');
-        $disk->deleteDirectory(self::PREVIOUS);
+        $temporary = self::MANIFEST.'.tmp';
+        $disk->put($temporary, json_encode($manifest, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
-        if ($disk->exists(self::CURRENT) && ! rename($disk->path(self::CURRENT), $disk->path(self::PREVIOUS))) {
-            throw new RuntimeException('Could not move the current export set aside.');
+        if (! rename($disk->path($temporary), $disk->path(self::MANIFEST))) {
+            throw new RuntimeException('Could not swap in the new export set.');
         }
 
-        if (! rename($disk->path(self::BUILDING), $disk->path(self::CURRENT))) {
-            throw new RuntimeException('Could not swap in the new export set.');
+        foreach ($disk->directories(self::SETS) as $directory) {
+            if (! in_array(basename($directory), [$manifest['set'], $previousSet], true)) {
+                $disk->deleteDirectory($directory);
+            }
+        }
+
+        foreach ($disk->directories(self::ROOT) as $directory) {
+            if ($directory !== self::SETS) {
+                $disk->deleteDirectory($directory);
+            }
         }
     }
 }
