@@ -56,6 +56,16 @@ class OpenApiDocumentTest extends TestCase
         $this->assertNotContains('facility', $document['components']['schemas']['MedicalFacilityEventResource']['required']);
     }
 
+    public function test_stats_groups_have_their_item_shape(): void
+    {
+        $schema = $this->document()['paths']['/v1/stats/facilities']['get']['responses']['200']['content']['application/json']['schema']['properties'];
+
+        $this->assertSame(['key', 'label', 'count'], $schema['data']['items']['required']);
+        $this->assertSame(['integer', 'string', 'null'], $schema['data']['items']['properties']['key']['type']);
+        $this->assertSame('integer', $schema['data']['items']['properties']['count']['type']);
+        $this->assertSame('integer', $schema['meta']['properties']['total']['type']);
+    }
+
     /**
      * @return array<string, mixed>
      */

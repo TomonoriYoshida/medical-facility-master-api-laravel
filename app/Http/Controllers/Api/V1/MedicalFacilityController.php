@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\Controllers\Api\V1\Concerns\FiltersMedicalFacilities;
 use App\Http\Controllers\Api\V1\Concerns\ProvidesAttribution;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\MedicalFacilityIndexRequest;
@@ -11,10 +12,10 @@ use App\Services\Text\AddressNormalizer;
 use App\Services\Text\ItaijiNormalizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Illuminate\Support\Carbon;
 
 class MedicalFacilityController extends Controller
 {
+    use FiltersMedicalFacilities;
     use ProvidesAttribution;
 
     private const int DEFAULT_RADIUS = 1000;
@@ -37,20 +38,8 @@ class MedicalFacilityController extends Controller
     {
         $filters = $request->validated();
 
-        $facilities = MedicalFacility::query()
-            ->when($filters['medical_institution_code'] ?? null, fn ($query, $codes) => $query->whereIn('medical_institution_code', explode(',', $codes)))
-            ->when($filters['prefecture_code'] ?? null, fn ($query, $value) => $query->where('prefecture_code', $value))
-            ->when($filters['municipality_code'] ?? null, fn ($query, $value) => $query->where('municipality_code', $value))
-            ->when($filters['institution_type'] ?? null, fn ($query, $value) => $query->where('institution_type', $value))
-            ->when($filters['status'] ?? null, fn ($query, $value) => $query->where('status', $value))
-            ->when($filters['bureau_code'] ?? null, fn ($query, $value) => $query->where('bureau_code', $value))
-            ->when($filters['department_category'] ?? null, fn ($query, $value) => $query->whereJsonContains('department_categories', (int) $value))
+        $facilities = $this->applyFilters(MedicalFacility::query(), $filters)
             ->when($filters['q'] ?? null, fn ($query, $term) => $this->applySearch($query, $term))
-            ->when($filters['designated_from'] ?? null, fn ($query, $date) => $query->where('designated_on', '>=', $date))
-            ->when($filters['designated_to'] ?? null, fn ($query, $date) => $query->where('designated_on', '<=', $date))
-            // updated_at is stored in UTC; the given offset, if any, is honored.
-            ->when($filters['updated_since'] ?? null, fn ($query, $since) => $query->where('updated_at', '>=', Carbon::parse($since)->utc()))
-            ->when($filters['designation_reason'] ?? null, fn ($query, $reason) => $query->whereJsonContains('designation_history', ['reason' => $reason]))
             ->when(isset($filters['latitude'], $filters['longitude']), fn ($query) => $this->applyNearby(
                 $query,
                 (float) $filters['latitude'],
