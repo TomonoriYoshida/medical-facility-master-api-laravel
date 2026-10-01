@@ -13,6 +13,12 @@ class MunicipalityPopulation extends Model
     /** @use HasFactory<MunicipalityPopulationFactory> */
     use HasFactory;
 
+    /**
+     * Cache key holding when the populations were last replaced; cached stats
+     * that include populations are keyed by it, so an import invalidates them.
+     */
+    public const string IMPORTED_AT_CACHE_KEY = 'municipality-populations:imported-at';
+
     protected $primaryKey = 'municipality_code';
 
     public $incrementing = false;

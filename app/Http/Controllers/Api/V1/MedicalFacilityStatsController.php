@@ -14,6 +14,7 @@ use App\Models\MedicalFacility;
 use App\Models\MunicipalityPopulation;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class MedicalFacilityStatsController extends Controller
@@ -46,8 +47,9 @@ class MedicalFacilityStatsController extends Controller
 
         $result = $this->rememberStats(
             $request,
-            // v2: entries cached before the population fields lack them.
-            'medical-facility-stats:v2:'.sha1((string) json_encode($filters)),
+            // v2: entries cached before the population fields lack them. Keyed
+            // by the population import too, so a new edition shows at once.
+            'medical-facility-stats:v2:'.Cache::get(MunicipalityPopulation::IMPORTED_AT_CACHE_KEY, 0).':'.sha1((string) json_encode($filters)),
             function () use ($request, $filters, $grouping): array {
                 $query = $this->applyFilters(MedicalFacility::query(), $filters);
 

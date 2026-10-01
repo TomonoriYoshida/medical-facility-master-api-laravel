@@ -3,14 +3,10 @@
 namespace App\Services\MedicalInfoNet;
 
 use App\Enums\InstitutionType;
+use App\Services\Http\OpenDataHttp;
 use Generator;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
 use RuntimeException;
-use Throwable;
 use ZipArchive;
 
 /**
@@ -21,7 +17,9 @@ final class MedicalInfoNetClient
 {
     private const string DIRECTORY = 'medical-info-net';
 
-    private const string USER_AGENT = 'MedicalFacilityMasterAPI/1.0 (+https://github.com/TomonoriYoshida/medical-facility-master-api-laravel)';
+    public function __construct(
+        private readonly OpenDataHttp $http,
+    ) {}
 
     /**
      * The newest date for which every configured dataset is published, with
@@ -32,7 +30,7 @@ final class MedicalInfoNetClient
      */
     public function latest(): array
     {
-        $html = $this->get(config()->string('medical_info_net.index_url'))->body();
+        $html = $this->http->get(config()->string('medical_info_net.index_url'))->body();
         /** @var array<string, InstitutionType> $datasets */
         $datasets = config('medical_info_net.datasets');
         $urlsByDate = [];
@@ -68,23 +66,7 @@ final class MedicalInfoNetClient
      */
     public function download(string $url): string
     {
-        $disk = Storage::disk('local');
-        $path = self::DIRECTORY.'/'.basename((string) parse_url($url, PHP_URL_PATH));
-        $disk->makeDirectory(self::DIRECTORY);
-
-        $response = Http::withHeaders(['User-Agent' => self::USER_AGENT])
-            ->timeout(300)
-            ->retry(3, 1000, fn (?Throwable $exception): bool => $exception instanceof ConnectionException, throw: false)
-            ->sink($disk->path($path))
-            ->get($url);
-
-        if (! $response->successful()) {
-            $disk->delete($path);
-
-            throw new RuntimeException("Downloading {$url} failed with HTTP {$response->status()}.");
-        }
-
-        return $disk->path($path);
+        return $this->http->download($url, self::DIRECTORY, timeout: 300);
     }
 
     /**
@@ -126,14 +108,5 @@ final class MedicalInfoNetClient
         } finally {
             $zip->close();
         }
-    }
-
-    private function get(string $url): Response
-    {
-        return Http::withHeaders(['User-Agent' => self::USER_AGENT])
-            ->timeout(60)
-            ->retry(3, 1000, fn (?Throwable $exception): bool => $exception instanceof ConnectionException)
-            ->get($url)
-            ->throw();
     }
 }
