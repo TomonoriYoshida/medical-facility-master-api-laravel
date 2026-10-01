@@ -4,6 +4,7 @@ namespace Tests\Unit\Services\Rhb\Import;
 
 use App\Enums\DepartmentBaseCategory;
 use App\Services\Rhb\Import\DepartmentCategoryClassifier;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class DepartmentCategoryClassifierTest extends TestCase
@@ -34,6 +35,25 @@ class DepartmentCategoryClassifierTest extends TestCase
         $categories = (new DepartmentCategoryClassifier)->classify(['呼内']);
 
         $this->assertSame([DepartmentBaseCategory::Respirology], $categories);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function dentalTokensContainingMedicalFallbacks(): array
+    {
+        return [
+            '小歯 (小児歯科) contains the 小 fallback' => ['小歯'],
+            '口腔外科 contains the 外 fallback' => ['口腔外科'],
+        ];
+    }
+
+    #[DataProvider('dentalTokensContainingMedicalFallbacks')]
+    public function test_dental_departments_are_not_taken_for_pediatrics_or_surgery(string $token): void
+    {
+        $categories = (new DepartmentCategoryClassifier)->classify([$token]);
+
+        $this->assertSame([DepartmentBaseCategory::Dentistry], $categories);
     }
 
     public function test_duplicate_categories_across_tokens_are_deduplicated(): void
