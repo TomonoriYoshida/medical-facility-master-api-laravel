@@ -102,10 +102,11 @@ cp .env.production.example .env
 docker compose build                    # 初回は数分かかる
 docker compose run --rm app php artisan migrate --force
 docker compose run --rm app php artisan db:seed --class=KanjiVariantSeeder --force
+docker compose run --rm app php artisan db:seed --class=MunicipalitySeeder --force
 docker compose up -d
 ```
 
-- `db:seed` は必ず `--class=KanjiVariantSeeder` を指定してください。`DatabaseSeeder` はテストユーザーを作るもので、本番イメージには必要な開発用パッケージ（Faker）が入っていません。
+- `db:seed` は必ず `--class=` を指定してください（`KanjiVariantSeeder`、`MunicipalitySeeder`）。`DatabaseSeeder` はテストユーザーを作るもので、本番イメージには必要な開発用パッケージ（Faker）が入っていません。
 
 初回のデータ取込を実行します。全国分で20分前後かかります（目安: 約230行/秒）。
 

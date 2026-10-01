@@ -8,6 +8,7 @@ use App\Enums\MedicalFacilityStatus;
 use App\Enums\RhbBureau;
 use App\Models\KanjiVariant;
 use App\Models\MedicalFacility;
+use App\Models\Municipality;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -32,6 +33,28 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $response->assertJsonPath('data.0.institution_type', ['code' => 1, 'label' => '病院']);
         $response->assertJsonPath('data.0.status', ['code' => 1, 'label' => '指定中']);
         $response->assertJsonPath('data.0.bureau', ['code' => 1, 'label' => '北海道厚生局']);
+    }
+
+    public function test_facilities_carry_their_municipality_and_can_be_filtered_by_it(): void
+    {
+        Municipality::factory()->create(['code' => '13101', 'prefecture_code' => '13', 'name' => '千代田区']);
+        Municipality::factory()->create(['code' => '13102', 'prefecture_code' => '13', 'name' => '中央区']);
+        $chiyoda = MedicalFacility::factory()->create(['prefecture_code' => '13', 'address' => '千代田区神田駿河台２丁目']);
+        MedicalFacility::factory()->create(['prefecture_code' => '13', 'address' => '中央区銀座１丁目']);
+        $unknown = MedicalFacility::factory()->create(['prefecture_code' => '13', 'address' => '存在しない市']);
+
+        $response = $this->getJson('/api/v1/medical-facilities?municipality_code=13101');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $chiyoda->id);
+        $response->assertJsonPath('data.0.municipality', ['code' => '13101', 'label' => '千代田区']);
+        $this->assertNull($this->getJson("/api/v1/medical-facilities/{$unknown->id}")->json('data.municipality'));
+    }
+
+    public function test_municipality_code_must_be_five_digits(): void
+    {
+        $this->getJson('/api/v1/medical-facilities?municipality_code=131')->assertUnprocessable();
     }
 
     public function test_a_returned_enum_code_can_be_fed_back_as_the_corresponding_filter(): void
@@ -90,6 +113,7 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $response = $this->getJson('/api/v1/medical-facilities');
 
         $response->assertOk();
+        $response->assertJsonPath('meta.attribution.municipality_source.url', 'https://catalog.registries.digital.go.jp/rc/dataset/ba-o1-000000_g2-000002');
         $response->assertJsonPath('meta.attribution.notice', '本APIのデータは、各地方厚生局が公開する「保険医療機関・保険薬局の指定一覧」を加工して作成しています。');
         $response->assertJsonCount(8, 'meta.attribution.sources');
         $response->assertJsonPath('meta.attribution.sources.0.bureau', '北海道厚生局');

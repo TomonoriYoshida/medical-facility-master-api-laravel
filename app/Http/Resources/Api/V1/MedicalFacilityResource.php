@@ -8,6 +8,7 @@ use App\Enums\MedicalFacilityStatus;
 use App\Enums\Prefecture;
 use App\Enums\RhbBureau;
 use App\Models\MedicalFacility;
+use App\Services\Address\MunicipalityResolver;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -34,6 +35,11 @@ class MedicalFacilityResource extends JsonResource
             'name' => $this->name,
             'prefecture_code' => $this->prefecture_code,
             'prefecture' => $this->codeAndLabel(Prefecture::from($this->prefecture_code)),
+            /** 住所から判定した市区町村。判定できない場合はnull */
+            'municipality' => $this->municipality_code === null ? null : [
+                'code' => $this->municipality_code,
+                'label' => app(MunicipalityResolver::class)->label($this->municipality_code),
+            ],
             'postal_code' => $this->postal_code,
             'address' => $this->address,
             'phone_number' => $this->phone_number,

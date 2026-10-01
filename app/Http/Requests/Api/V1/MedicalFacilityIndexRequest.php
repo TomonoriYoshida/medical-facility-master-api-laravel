@@ -32,6 +32,9 @@ class MedicalFacilityIndexRequest extends FormRequest
             /** 都道府県コード（JIS X 0401の2桁、01〜47） */
             'prefecture_code' => ['sometimes', Rule::enum(Prefecture::class)],
 
+            /** 市区町村コード（全国地方公共団体コード5桁。例: 13101 千代田区）。住所から判定した値で、判定できない施設は含まれない */
+            'municipality_code' => ['sometimes', 'string', 'regex:/^[0-9]{5}$/'],
+
             /** 施設種別 */
             'institution_type' => ['sometimes', Rule::enum(InstitutionType::class)],
 
