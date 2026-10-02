@@ -89,7 +89,11 @@ services:
         volumes:
             - 'mysql-data:/var/lib/mysql'
         healthcheck:
-            test: ['CMD-SHELL', 'mysqladmin ping -h localhost -u root -p"$$MYSQL_ROOT_PASSWORD" --silent']
+            # Over TCP, not the socket: on the first start the image initializes
+            # the database with a temporary server that has networking off, and
+            # a socket ping would report it healthy while the app still cannot
+            # connect (the first migrate then fails with "Connection refused").
+            test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -u root -p"$$MYSQL_ROOT_PASSWORD" --silent']
             interval: 10s
             retries: 10
             timeout: 5s

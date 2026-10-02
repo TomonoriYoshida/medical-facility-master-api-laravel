@@ -58,14 +58,18 @@ scheduler は毎日（日本時間）次の順に実行します。
    - TCP 80（HTTP。証明書の取得にも使う）
    - TCP 443（HTTPS）
    - UDP 443（HTTP/3。任意）
-5. Oracle の Ubuntu イメージは、SSH 以外の受信を拒否する iptables ルールが初期設定されています。80 / 443 を許可します。
+5. Oracle の Ubuntu イメージは、SSH 以外の受信を拒否する iptables ルールが初期設定されています。80 / 443 を許可するルールを、その拒否のルール（`REJECT`）より**前**に挿入します。後ろに入れると効きません（2026年10月の Ubuntu 24.04 イメージでは、`REJECT` は INPUT の5番目でした）。
 
    ```bash
-   sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
-   sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
-   sudo iptables -I INPUT 6 -p udp --dport 443 -j ACCEPT
+   N=$(sudo iptables -L INPUT -n --line-numbers | awk '$2 == "REJECT" { print $1; exit }')
+   sudo iptables -I INPUT "$N" -p udp --dport 443 -j ACCEPT
+   sudo iptables -I INPUT "$N" -m state --state NEW -p tcp --dport 443 -j ACCEPT
+   sudo iptables -I INPUT "$N" -m state --state NEW -p tcp --dport 80 -j ACCEPT
    sudo netfilter-persistent save
+   sudo iptables -L INPUT -n --line-numbers   # 80 / 443 の ACCEPT が REJECT より上にあることを確認
    ```
+
+   FORWARD にも同様の `REJECT` がありますが、Docker は起動時に自身のルール（`DOCKER-USER` / `DOCKER-FORWARD`）をその前に追加するため、公開したポートに届きます。`netfilter-persistent save` は Docker のインストール前に実行してください（Docker のルールまで保存されるのを避けるため）。
 
 ### Docker のインストール
 
