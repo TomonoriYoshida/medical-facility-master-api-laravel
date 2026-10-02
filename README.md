@@ -328,7 +328,21 @@ vendor/bin/sail artisan rhb:import --wait           # 取込（完了まで待�
 - API: http://localhost:8000/api/v1/medical-facilities
 - 仕様書: http://localhost:8000/docs/api
 
-定期実行（毎日 05:00 / 05:30）をローカルで動かす場合は、`vendor/bin/sail artisan schedule:work` を起動してください。
+### 定期実行とキューワーカー
+
+毎日のダウンロード（05:00）と取込（05:30）などの定期実行をローカルでも動かす場合は、`.env` に次の1行を追加して起動し直してください。定期実行用の `scheduler` と、取込ジョブを処理する `queue` のコンテナが一緒に起動し、Docker を再起動しても自動で立ち上がります。
+
+```bash
+# .env
+COMPOSE_PROFILES=background
+```
+
+```bash
+vendor/bin/sail up -d
+vendor/bin/sail logs -f scheduler queue   # 動作の確認
+```
+
+既定では起動しません（clone しただけの環境で、各局のサイトへの定期アクセスが始まらないようにするため）。止めるときは `.env` の行を消して `vendor/bin/sail stop scheduler queue` を実行してください。
 
 ## 本番デプロイ
 

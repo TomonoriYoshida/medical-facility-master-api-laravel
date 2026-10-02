@@ -25,6 +25,49 @@ services:
             - mysql
             - redis
             - mailpit
+    # Opt-in background processes (start them with COMPOSE_PROFILES=background
+    # in .env): the daily crawl/import schedule and the queue worker that runs
+    # rhb:import's jobs. Off by default so a fresh clone doesn't start
+    # crawling the regional health bureaus' sites on its own.
+    scheduler:
+        image: 'sail-8.5/app'
+        profiles: ['background']
+        restart: unless-stopped
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+            SUPERVISOR_PHP_COMMAND: '/usr/bin/php -d variables_order=EGPCS /var/www/html/artisan schedule:work'
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            - mysql
+            - redis
+    queue:
+        image: 'sail-8.5/app'
+        profiles: ['background']
+        restart: unless-stopped
+        # queue:work finishes the job in progress before exiting on SIGTERM;
+        # ImportRhbFacilityListJob may run for up to its 600s timeout.
+        stop_grace_period: 10m
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+            # No --max-time: supervisord does not restart a program that
+            # exits with status 0, so the worker would stop for good.
+            SUPERVISOR_PHP_COMMAND: '/usr/bin/php -d variables_order=EGPCS /var/www/html/artisan queue:work --sleep=3'
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            - mysql
+            - redis
     mysql:
         image: 'mysql:8.4'
         # --innodb-buffer-pool-size: medical_facilities alone exceeds MySQL's
