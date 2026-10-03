@@ -284,6 +284,71 @@ docker compose exec app php artisan rhb:prune                   # 確認のう�
 
 通知が来たら、`rhb:status` と、アプリのログ（「7. ログ」）で原因を確認します。取得の失敗はどの局で何が起きたか、`rhb:status` の失敗はどの局・カテゴリに問題があるかがログに残ります（scheduler から実行したコマンドの画面出力は残らないため）。取込ジョブの失敗は翌日の `rhb:import` で自動的に再試行されますが、一覧ページの構造の変更はリゾルバ（`app/Services/Rhb/Download/`）の修正が必要です。
 
+### CPU と送信量
+
+日次処理の見張り（上記）とは別に、CPU の張り付きと、インターネットへの送信量を見張ります。どちらも、クローラーや攻撃に当日中に気づくためのものです。Oracle Cloud は送信量が月10TB を超えると、従量課金（Pay As You Go）では超過分を請求し、上限で止める仕組みはありません。
+
+**CPU（OCI のアラーム）**: CPU 使用率が85%を超えた状態が30分続いたら、メールで通知します。毎月の取込（約20分）では鳴らない条件です。
+
+1. Notifications のトピックを作り、メールの購読を追加します（届いた確認メールのリンクを押すと有効になります）。
+2. Monitoring でアラームを作ります。名前空間 `oci_computeagent`、クエリ `CpuUtilization[1m]{resourceId = "<インスタンスの OCID>"}.mean() > 85`、保留期間 30分、通知先は1のトピック。
+
+**送信量（vnstat）**: 外部向けのインターフェース（`enp0s6`）の送信量を `vnstat` で数え、1時間ごとに healthchecks.io に送ります。その日（UTC）の送信量が50GB、または今月の送信量が5TB を超えたら `/fail` を送り、通知されます。OCI のエージェントの指標 `NetworksBytesOut` は、Docker の内部の通信（アプリと MySQL の間など）まで数え、コンテナを作り直すとリセットされるため、使いません。VCN の指標（`oci_vnic`）は、2026年10月時点ではこのテナンシーに記録されていませんでした。
+
+1. `sudo apt-get install -y vnstat`
+2. healthchecks.io にチェックを作ります（名前 `egress`、Schedule は Simple、Period 1 hour、Grace Time 1 hour）。
+3. `~/check-egress.sh` を次の内容で作り、`chmod 700` します。
+
+```bash
+#!/usr/bin/env bash
+# Hourly check of the server's internet egress, the traffic Oracle Cloud bills
+# beyond 10 TB a month. Counts only the external interface (enp0s6) via
+# vnstat: the instance agent's NetworksBytesOut metric also counts Docker's
+# internal traffic (app <-> MySQL) and resets when containers are recreated.
+#
+# Pings a healthchecks.io check (HC_URL in ~/.egress-check.env): "/fail" with
+# the figures once today's or this month's egress passes its limit, so an
+# attack or a runaway crawler is noticed long before the free 10 TB is gone.
+# vnstat's days and months follow the server clock (UTC).
+set -euo pipefail
+
+IFACE=enp0s6
+DAILY_LIMIT_GB=50
+MONTHLY_LIMIT_GB=5000
+
+HC_URL=
+# shellcheck source=/dev/null
+[[ -f ~/.egress-check.env ]] && source ~/.egress-check.env
+
+read -r today_gb month_gb < <(vnstat --json -i "$IFACE" | python3 -c '
+import json, sys
+traffic = json.load(sys.stdin)["interfaces"][0]["traffic"]
+days, months = traffic["day"], traffic["month"]
+today = days[-1]["tx"] if days else 0
+month = months[-1]["tx"] if months else 0
+print("%.2f %.2f" % (today / 1e9, month / 1e9))
+')
+
+message="egress ${IFACE}: today ${today_gb} GB (limit ${DAILY_LIMIT_GB}), this month ${month_gb} GB (limit ${MONTHLY_LIMIT_GB})"
+echo "$(date -u '+%F %T') ${message}"
+
+over=$(python3 -c "print(int(${today_gb} > ${DAILY_LIMIT_GB} or ${month_gb} > ${MONTHLY_LIMIT_GB}))")
+
+if [[ -n "$HC_URL" ]]; then
+    if [[ "$over" == 1 ]]; then
+        curl -fsS -m 10 --retry 3 --data-raw "$message" "${HC_URL}/fail" > /dev/null
+    else
+        curl -fsS -m 10 --retry 3 --data-raw "$message" "$HC_URL" > /dev/null
+    fi
+fi
+```
+
+4. ping URL を `~/.egress-check.env` に書き（`HC_URL=https://hc-ping.com/...`、`chmod 600`）、cron に追加します。
+
+```cron
+5 * * * * $HOME/check-egress.sh >> $HOME/check-egress.log 2>&1
+```
+
 ## 7. ログ
 
 | ログ | 場所 | 内容 |
