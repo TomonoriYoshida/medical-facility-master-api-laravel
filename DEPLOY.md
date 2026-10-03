@@ -199,14 +199,41 @@ docker compose run --rm app php artisan facilities:geocode
 
 `medical_facility_events`（開業・廃止などの変更履歴）は、取込を重ねて記録していくデータです。各局の公開データから作り直せないので、定期的にバックアップします。
 
+バックアップの処理はスクリプトにまとめ、cron からはそれを呼ぶだけにします（cron の1行に書くと、`%` のエスケープや引用符の入れ子を間違えやすく、そのまま試すこともできないため）。`~/backup-db.sh` を次の内容で作ります。
+
 ```bash
-mkdir -p ~/backups && chmod 700 ~/backups   # ダンプには開設者名・管理者名（個人名）が含まれるため、本人だけが読めるようにする
+#!/usr/bin/env bash
+# Daily dump of the production database, 14 days kept. The dump contains
+# personal names (founder/administrator), so ~/backups is readable by its
+# owner only. pipefail makes a failed mysqldump fail the script instead of
+# leaving an empty gzip behind; the .tmp rename keeps a failed run from
+# replacing a good file.
+set -euo pipefail
+
+cd ~/medical-facility-master-api-laravel
+mkdir -p ~/backups
+chmod 700 ~/backups
+
+out=~/backups/mf-$(date +%F).sql.gz
+
+docker compose exec -T mysql sh -c 'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --no-tablespaces "$MYSQL_DATABASE" 2>/dev/null' \
+    | gzip > "$out.tmp"
+mv "$out.tmp" "$out"
+
+find ~/backups -name 'mf-*.sql.gz' -mtime +14 -delete
+```
+
+```bash
+chmod 700 ~/backup-db.sh
+~/backup-db.sh && ls -l ~/backups   # 一度実行して確認（全国分で約9秒、gzip 後で約33MB）
 crontab -e
 ```
 
+サーバーの時計は UTC です（Oracle Cloud の Ubuntu の既定）。日本時間の 04:00（05:00 の取得の前）は UTC の 19:00 なので、cron には次のように書きます。
+
 ```cron
-# 毎日 04:00 にダンプを取り、14日分を残す
-0 4 * * * cd ~/medical-facility-master-api-laravel && docker compose exec -T mysql sh -c 'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --no-tablespaces "$MYSQL_DATABASE"' | gzip > ~/backups/mf-$(date +\%F).sql.gz && find ~/backups -name 'mf-*.sql.gz' -mtime +14 -delete
+# The server clock is UTC: 19:00 UTC = 04:00 JST, before the 05:00 JST download.
+0 19 * * * $HOME/backup-db.sh >> $HOME/backup-db.log 2>&1
 ```
 
 サーバーごと失われる場合に備えて、ときどきバックアップを手元や Object Storage にコピーしておくと安全です。
