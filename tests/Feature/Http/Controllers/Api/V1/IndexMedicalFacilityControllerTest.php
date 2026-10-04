@@ -610,4 +610,106 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors([$invalidField]);
     }
+
+    public function test_page_numbers_reach_only_the_first_ten_thousand_rows(): void
+    {
+        config(['api.max_paginated_rows' => 10]);
+        MedicalFacility::factory()->count(3)->create();
+
+        $this->getJson('/api/v1/medical-facilities?per_page=5&page=2')
+            ->assertOk()
+            ->assertJsonPath('meta.max_page', 2);
+        $this->getJson('/api/v1/medical-facilities?per_page=5&page=3')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['page']);
+    }
+
+    public function test_links_stop_at_the_page_limit(): void
+    {
+        config(['api.max_paginated_rows' => 10]);
+        MedicalFacility::factory()->count(15)->create(['prefecture_code' => '13']);
+
+        $lastAllowed = $this->getJson('/api/v1/medical-facilities?prefecture_code=13&per_page=5&page=2');
+        $first = $this->getJson('/api/v1/medical-facilities?prefecture_code=13&per_page=5');
+
+        $lastAllowed->assertOk();
+        $lastAllowed->assertJsonPath('links.next', null);
+        $lastAllowed->assertJsonPath('meta.last_page', 3);
+        $this->assertStringContainsString('page=2', (string) $lastAllowed->json('links.last'));
+        $this->assertStringContainsString('page=2', (string) $first->json('links.next'));
+        $this->assertStringContainsString('prefecture_code=13', (string) $first->json('links.next'));
+    }
+
+    public function test_the_page_limit_follows_the_default_page_size(): void
+    {
+        config(['api.max_paginated_rows' => 10]);
+
+        // 25 per page by default: the first page is always reachable, even past the limit.
+        $this->getJson('/api/v1/medical-facilities')->assertOk()->assertJsonPath('meta.max_page', 1);
+        $this->getJson('/api/v1/medical-facilities?page=1&per_page=10')->assertOk();
+        $this->getJson('/api/v1/medical-facilities?page=2&per_page=10')->assertUnprocessable();
+    }
+
+    public function test_cursor_pagination_walks_every_facility_even_when_many_share_an_update_time(): void
+    {
+        config(['api.max_paginated_rows' => 2]);
+        $sameSecond = MedicalFacility::factory()->count(5)->create(['updated_at' => '2026-10-01 05:30:00']);
+        $later = MedicalFacility::factory()->create(['updated_at' => '2026-10-01 05:30:01']);
+        MedicalFacility::factory()->create(['updated_at' => '2026-09-30 05:30:00']);
+
+        $seen = [];
+        $url = '/api/v1/medical-facilities?'.http_build_query([
+            'pagination' => 'cursor',
+            'sort' => 'updated_at',
+            'updated_since' => '2026-10-01T05:30:00Z',
+            'per_page' => 2,
+        ]);
+
+        for ($request = 0; $url !== null && $request < 10; $request++) {
+            $response = $this->getJson($url)->assertOk();
+            $seen = [...$seen, ...$response->json('data.*.id')];
+            $url = $response->json('links.next');
+        }
+
+        $this->assertNull($url, 'the cursor never reached the end');
+        $this->assertSame([...$sameSecond->modelKeys(), $later->id], $seen);
+    }
+
+    public function test_cursor_pagination_keeps_the_filters_in_the_next_link(): void
+    {
+        MedicalFacility::factory()->count(3)->create(['prefecture_code' => '13']);
+        MedicalFacility::factory()->create(['prefecture_code' => '01']);
+
+        $response = $this->getJson('/api/v1/medical-facilities?pagination=cursor&prefecture_code=13&per_page=2');
+
+        $response->assertOk();
+        $response->assertJsonMissingPath('meta.max_page');
+        $this->assertNotNull($response->json('meta.next_cursor'));
+        parse_str((string) parse_url((string) $response->json('links.next'), PHP_URL_QUERY), $next);
+        $this->assertSame(['pagination' => 'cursor', 'prefecture_code' => '13', 'per_page' => '2'], array_diff_key($next, ['cursor' => true]));
+    }
+
+    /**
+     * @return array<string, array{array<string, string>}>
+     */
+    public static function unsupportedCursorOrderProvider(): array
+    {
+        return [
+            'designated_on may be null' => [['sort' => 'designated_on']],
+            'descending update time' => [['sort' => '-updated_at']],
+            'distance order of a nearby search' => [['latitude' => '35.68', 'longitude' => '139.76']],
+        ];
+    }
+
+    /**
+     * @param  array<string, string>  $query
+     */
+    #[DataProvider('unsupportedCursorOrderProvider')]
+    public function test_cursor_pagination_rejects_orders_it_cannot_resume(array $query): void
+    {
+        $response = $this->getJson('/api/v1/medical-facilities?'.http_build_query(['pagination' => 'cursor', ...$query]));
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['pagination']);
+    }
 }

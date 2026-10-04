@@ -18,6 +18,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Page Depth
+    |--------------------------------------------------------------------------
+    |
+    | Page numbers (offset pagination) reach only the first this-many rows of a
+    | list: deep offsets cost the server the most and invite crawlers to walk
+    | the whole table. Full copies come from the bulk download, or from the
+    | facility list's cursor pagination (pagination=cursor), which has no limit.
+    |
+    */
+
+    'max_paginated_rows' => (int) env('API_MAX_PAGINATED_ROWS', 10000),
+
+    /*
+    |--------------------------------------------------------------------------
     | Docs and Bulk Download Limits
     |--------------------------------------------------------------------------
     |

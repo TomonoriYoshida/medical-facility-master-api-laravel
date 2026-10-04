@@ -266,6 +266,19 @@ class IndexMedicalFacilityEventControllerTest extends TestCase
         $response->assertJsonValidationErrors([$invalidField]);
     }
 
+    public function test_page_numbers_reach_only_the_first_ten_thousand_rows(): void
+    {
+        config(['api.max_paginated_rows' => 10]);
+        $this->event(MedicalFacilityEventType::Created);
+
+        $this->getJson('/api/v1/medical-facility-events?per_page=5&page=2')
+            ->assertOk()
+            ->assertJsonPath('meta.max_page', 2);
+        $this->getJson('/api/v1/medical-facility-events?per_page=5&page=3')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['page']);
+    }
+
     /**
      * @param  array<string, mixed>  $attributes
      */

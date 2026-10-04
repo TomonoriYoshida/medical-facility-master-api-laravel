@@ -57,11 +57,17 @@ class MedicalFacilityController extends Controller
                     default => $query,
                 },
             )
-            ->orderBy('id')
-            ->paginate($filters['per_page'] ?? 25);
+            ->orderBy('id');
 
-        return MedicalFacilityResource::collection($facilities)
-            ->additional(['meta' => ['attribution' => $this->attribution()]]);
+        // withQueryString(): the links.next a client follows must carry the
+        // same filters (and, for a cursor, pagination=cursor itself).
+        if ($request->usesCursor()) {
+            return MedicalFacilityResource::collection($facilities->cursorPaginate($request->perPage())->withQueryString())
+                ->additional(['meta' => ['attribution' => $this->attribution()]]);
+        }
+
+        return MedicalFacilityResource::collection($facilities->paginate($request->perPage())->withQueryString())
+            ->additional(['meta' => ['max_page' => $request->maxPage(), 'attribution' => $this->attribution()]]);
     }
 
     /**

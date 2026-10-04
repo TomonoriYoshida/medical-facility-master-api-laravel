@@ -44,10 +44,11 @@ class MedicalFacilityEventController extends Controller
                     ->when($filters['institution_type'] ?? null, fn ($facilityQuery, $value) => $facilityQuery->where('institution_type', $value))),
             )
             ->with('medicalFacility')
-            ->paginate($filters['per_page'] ?? 25);
+            ->paginate($request->perPage())
+            ->withQueryString();
 
         return MedicalFacilityEventResource::collection($events)
-            ->additional(['meta' => ['attribution' => $this->attribution()]]);
+            ->additional(['meta' => ['max_page' => $request->maxPage(), 'attribution' => $this->attribution()]]);
     }
 
     /**
