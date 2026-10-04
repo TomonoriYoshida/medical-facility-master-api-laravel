@@ -7,13 +7,17 @@ use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityStatus;
 use App\Enums\Prefecture;
 use App\Enums\RhbBureau;
+use App\Http\Requests\Api\V1\Concerns\LimitsPageDepth;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class MedicalFacilityIndexRequest extends FormRequest
 {
+    use LimitsPageDepth;
+
     /** Each word adds a LIKE over name and address, so their number is capped. */
     public const int MAX_SEARCH_WORDS = 5;
 
@@ -127,6 +131,60 @@ class MedicalFacilityIndexRequest extends FormRequest
 
             /** 1ページあたりの件数（デフォルト25、最大100） */
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+
+            ...$this->pageRules(),
+
+            /**
+             * `cursor` にすると、ページ番号の代わりにカーソルでページを送る（件数の上限なし）。
+             * 次のページは `links.next`（または `meta.next_cursor` を `cursor` に渡す）で取得する。
+             * 全件の取得や差分の同期向け。並び順は id 順か `sort=updated_at` のときだけ使える
+             */
+            'pagination' => ['sometimes', Rule::in(['cursor'])],
+
+            /** カーソル方式の次のページの位置（`meta.next_cursor` の値） */
+            'cursor' => ['sometimes', 'string', 'max:1000'],
         ];
+    }
+
+    public function usesCursor(): bool
+    {
+        return $this->validated('pagination') === 'cursor';
+    }
+
+    /**
+     * Cursor pagination resumes after the last row's values of the ordering
+     * columns, so they must be non-null and unique together: id, or
+     * updated_at then id. designated_on can be null, and a nearby search's
+     * distance is computed rather than a column.
+     *
+     * @return array<int, Closure(Validator): void>
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                if ($this->input('pagination') !== 'cursor') {
+                    return;
+                }
+
+                $sortsByColumn = in_array($this->input('sort'), [null, 'id', 'updated_at'], true);
+                $searchesNearby = $this->filled('latitude') || $this->filled('longitude');
+
+                if (! $sortsByColumn || $searchesNearby) {
+                    $validator->errors()->add(
+                        'pagination',
+                        'カーソル方式（pagination=cursor）は、id 順か sort=updated_at のときだけ使えます（近隣検索の距離順、指定年月日順、新しい順は不可）。',
+                    );
+                }
+            },
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return $this->pageMessages('それより先は、条件を絞り込むか、全件の一括ダウンロード（/api/v1/exports）か、カーソル方式（pagination=cursor）を使ってください。');
     }
 }

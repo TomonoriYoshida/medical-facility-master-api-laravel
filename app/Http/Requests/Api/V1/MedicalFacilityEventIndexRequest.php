@@ -5,12 +5,15 @@ namespace App\Http\Requests\Api\V1;
 use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityEventType;
 use App\Enums\Prefecture;
+use App\Http\Requests\Api\V1\Concerns\LimitsPageDepth;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class MedicalFacilityEventIndexRequest extends FormRequest
 {
+    use LimitsPageDepth;
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -57,6 +60,16 @@ class MedicalFacilityEventIndexRequest extends FormRequest
 
             /** 1ページあたりの件数（デフォルト25、最大100） */
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+
+            ...$this->pageRules(),
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return $this->pageMessages('それより先は、期間（occurred_from / occurred_to、detected_since）などの条件で絞り込んでください。');
     }
 }
