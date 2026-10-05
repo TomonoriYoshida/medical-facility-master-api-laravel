@@ -216,6 +216,19 @@ docker compose run --rm app php artisan facilities:assign-opening-hours
 
 - 照合するまで、診療時間のAPIはすべての施設で `data: null` を返し、`open_at` には何も当てはまりません。`migrate` の直後に続けて実行してください。
 
+### 外字の置き換えと照合用キーの変更（初回）
+
+外字の置き換えを含む版へ初めて更新したときは、`migrate` の後に次を実行します。取り込み直しは全国で20分ほどかかるため、朝の定期実行（05:00〜07:15）を避けます。
+
+```bash
+docker compose run --rm app php artisan rhb:import --force --wait
+docker compose run --rm app php artisan medical-info-net:import --force
+docker compose run --rm app php artisan facilities:assign-opening-hours --force
+```
+
+- `rhb:import --force` は、外字を含む施設（名前約360件・住所約60件、個人名を含めると約4,500件）を「再処理」の変更として記録し、`updated_at` を動かします。一括ダウンロードは翌朝の `rhb:export` で作り直されます。
+- 照合用キーの作り方を変えた版では、`medical-info-net:import --force` で医療情報ネット側のキーを作り直し、`facilities:assign-opening-hours --force` で照合し直します。
+
 ## 4. バックアップ
 
 `medical_facility_events`（開業・廃止などの変更履歴）は、取込を重ねて記録していくデータです。各局の公開データから作り直せないので、定期的にバックアップします。

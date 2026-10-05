@@ -34,7 +34,7 @@ medical_info_net_locations (1) ── (0..1) medical_info_net_schedules   ※ so
 | `institution_type` | unsignedTinyInteger | - | `App\Enums\InstitutionType` をcast。1:病院 2:診療所 3:歯科診療所 4:薬局 |
 | `status` | unsignedTinyInteger | - | `App\Enums\MedicalFacilityStatus` をcast。1:Active 2:Closed 3:Suspended（休止）。デフォルト1。実データで休止は0.72%出現する実在のステータスで、廃業（Closed）とは意味が異なる（施設情報・診療科目は保持されたまま指定効力のみ停止している状態） |
 | `last_seen_rhb_dataset_download_id` | FK → `rhb_dataset_downloads`, nullable | ✓ | `nullOnDelete()`。廃業検知用の監視カラム。インポート処理が施設を作成・更新・再活性化するたびに、その回の`rhb_dataset_downloads.id`を記録する |
-| `name` | string | - | 医療機関名称 |
+| `name` | string | - | 医療機関名称。元データの外字（Unicode の私用領域。「𠮷」「一点しんにょうの辻」など）は、取り込み時に標準の字へ置き換える（`App\Services\Rhb\Import\PrivateUseCharacters`。全セルが対象）。字を特定できない外字は「〓」にする |
 | `name_normalized` | string | ✓ | `name`をNFKC正規化＋異体字統合（`kanji_variants`参照）した検索用カラム。`MedicalFacilityObserver`が保存時に自動計算するため`#[Fillable]`には含まれない |
 | `prefecture_code` | string(2) | - | 都道府県コード |
 | `municipality_code` | char(5) | ✓ | 市区町村コード（全国地方公共団体コード5桁）。`address`の先頭の市区町村名を`App\Services\Address\MunicipalityResolver`が`municipalities`と最長一致で判定し、`MedicalFacilityObserver`が都道府県・住所の変更時に自動計算する（`#[Fillable]`には含まれない）。判定できない住所はnull（全国約22万件中21件、旧字体・誤記の住所）。既存データへの付与・再計算は`facilities:assign-municipalities`（`updated_at`は動かさない）。インデックスあり |
@@ -100,7 +100,7 @@ CSVを更新してシーダーを再実行したあとは、`facilities:assign-m
 
 ## `medical_info_net_locations`
 
-厚生労働省「医療情報ネット」のオープンデータ（年2回、6月・12月に公開。PDL1.0）の施設の座標と定休日。`medical-info-net:import`が最新の版で`medical_info_net_schedules`と一緒に丸ごと入れ替える（取り込み済みの版は飛ばすので、毎月2日に確認する）。範囲外（`RHB_PREFECTURES`）の都道府県は入れない。座標が「0.0」の施設（元データの約8%）も、名称での照合で同名の別施設と取り違えないよう、座標なしで入れる。医療情報ネットの施設は厚生局データと共通のコードを持たないため、照合用のキーで突き合わせる（`App\Services\MedicalInfoNet\MedicalInfoNetMatcher`。下記「ジオコーディング」の5と同じ規則）。
+厚生労働省「医療情報ネット」のオープンデータ（年2回、6月・12月に公開。PDL1.0）の施設の座標と定休日。`medical-info-net:import`が最新の版で`medical_info_net_schedules`と一緒に丸ごと入れ替える（取り込み済みの版は飛ばすので、毎月2日に確認する）。範囲外（`RHB_PREFECTURES`）の都道府県は入れない。座標が「0.0」の施設（元データの約8%）も、名称での照合で同名の別施設と取り違えないよう、座標なしで入れる。医療情報ネットの施設は厚生局データと共通のコードを持たないため、照合用のキーで突き合わせる（キーの作り方を変えたら`medical-info-net:import --force`で作り直す）（`App\Services\MedicalInfoNet\MedicalInfoNetMatcher`。下記「ジオコーディング」の5と同じ規則）。
 
 | カラム | 型 | 説明 |
 |---|---|---|
@@ -108,8 +108,8 @@ CSVを更新してシーダーを再実行したあとは、`facilities:assign-m
 | `source_id` | string(20) / null | 医療情報ネットの施設ID。診療時間票（`medical_info_net_schedules`）との対応に使う。この列を追加する前に取り込んだ行はnull（`medical-info-net:import --force`で埋まる） |
 | `institution_type` | unsignedTinyInteger | `App\Enums\InstitutionType`。病院・診療所・歯科診療所・薬局の各ファイルに対応 |
 | `municipality_code` | char(5) | 都道府県コード＋市区町村コード（元データの3桁）。`medical_facilities.municipality_code`と同じ体系 |
-| `name_key` | string | `App\Services\Address\FacilityMatchingKeys::name()`。正規化した名称から先頭の法人名（「医療法人社団明生会」など）を除いたもの |
-| `address_key` | string | `FacilityMatchingKeys::address()`。都道府県名と、番地より後ろ（建物名・階）を除き、番地を「1-2-3」の形にした所在地 |
+| `name_key` | string | `App\Services\Address\FacilityMatchingKeys::name()`。正規化した名称から、先頭の法人名（「医療法人社団明生会」「社団医療法人養生会」、医療情報ネットの略記「(医)成心会」）と記号（「・」「、」など）を除き、「皮フ」「付属」を「皮膚」「附属」に、ハイフンを長音記号にそろえたもの |
+| `address_key` | string | `FacilityMatchingKeys::address()`。都道府県名と、番地より後ろ（建物名・階）、「大字」「字」を除き、町名の漢数字（「五条」）を数字に、番地を「1-2-3」の形にした所在地 |
 | `latitude` / `longitude` | decimal(10,6) / null | 元データの所在地座標。「0.0」はnull |
 | `closures` | json / null | 定休日 `{weekly: ["sun"], monthly: [{week: 2, day: "wed"}], holidays: bool|null, other: string|null}`。元データの「毎週決まった曜日に休診」などの列は、名前に反して**1が診療・0が休診**（定義書のとおり）。`monthly`は毎週の休みと重なる曜日を除く。`other`は自由記述（元データの「（改行）」は改行にする）。該当する列がすべて空ならnull |
 | `published_on` | date | 元データの公開時点（例: 2026-06-01） |
