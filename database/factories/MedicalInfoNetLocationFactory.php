@@ -19,6 +19,7 @@ class MedicalInfoNetLocationFactory extends Factory
     public function definition(): array
     {
         return [
+            'source_id' => (string) fake()->unique()->numerify('13#########'),
             'institution_type' => InstitutionType::Clinic,
             'municipality_code' => '13101',
             'name_key' => fake()->unique()->company(),

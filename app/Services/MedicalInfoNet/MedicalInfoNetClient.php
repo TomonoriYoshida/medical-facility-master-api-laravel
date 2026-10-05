@@ -11,7 +11,7 @@ use ZipArchive;
 
 /**
  * Finds the latest 医療情報ネット publication on the MHLW index page,
- * downloads its facility files and reads their rows.
+ * downloads its facility and hours files and reads their rows.
  */
 final class MedicalInfoNetClient
 {
@@ -22,17 +22,21 @@ final class MedicalInfoNetClient
     ) {}
 
     /**
-     * The newest date for which every configured dataset is published, with
-     * each dataset's file URL. Older publications stay listed on the page
-     * (some without ".csv" in the name), so the dates are compared.
+     * The newest date for which every configured dataset (facilities and
+     * hours) is published, with each dataset's file URL. Older publications
+     * stay listed on the page (some without ".csv" in the name), so the
+     * dates are compared.
      *
-     * @return array{published_on: Carbon, files: array<string, array{url: string, institution_type: InstitutionType}>}
+     * @return array{published_on: Carbon, files: array<string, array{url: string, institution_type: InstitutionType}>, hours_files: array<string, array{url: string, institution_type: InstitutionType}>}
      */
     public function latest(): array
     {
         $html = $this->http->get(config()->string('medical_info_net.index_url'))->body();
-        /** @var array<string, InstitutionType> $datasets */
-        $datasets = config('medical_info_net.datasets');
+        /** @var array<string, InstitutionType> $facilityDatasets */
+        $facilityDatasets = config('medical_info_net.datasets');
+        /** @var array<string, InstitutionType> $hoursDatasets */
+        $hoursDatasets = config('medical_info_net.hours_datasets');
+        $datasets = [...$facilityDatasets, ...$hoursDatasets];
         $urlsByDate = [];
 
         preg_match_all('#href="(/content/\d+/([0-9a-z_-]+?)_(\d{8})(?:\.csv)?\.zip)"#', $html, $matches, PREG_SET_ORDER);
@@ -47,18 +51,22 @@ final class MedicalInfoNetClient
 
         foreach ($urlsByDate as $date => $urls) {
             if (count($urls) === count($datasets)) {
+                $files = fn (array $datasets): array => array_map(
+                    fn (InstitutionType $institutionType, string $dataset): array => ['url' => $urls[$dataset], 'institution_type' => $institutionType],
+                    $datasets,
+                    array_keys($datasets),
+                );
+
                 return [
                     'published_on' => Carbon::createFromFormat('!Ymd', (string) $date)
                         ?? throw new RuntimeException("Unreadable publication date \"{$date}\"."),
-                    'files' => array_map(
-                        fn (string $dataset): array => ['url' => $urls[$dataset], 'institution_type' => $datasets[$dataset]],
-                        array_combine(array_keys($datasets), array_keys($datasets)),
-                    ),
+                    'files' => array_combine(array_keys($facilityDatasets), $files($facilityDatasets)),
+                    'hours_files' => array_combine(array_keys($hoursDatasets), $files($hoursDatasets)),
                 ];
             }
         }
 
-        throw new RuntimeException('No 医療情報ネット publication with every facility file was found on '.config()->string('medical_info_net.index_url').'.');
+        throw new RuntimeException('No 医療情報ネット publication with every facility and hours file was found on '.config()->string('medical_info_net.index_url').'.');
     }
 
     /**
@@ -96,7 +104,9 @@ final class MedicalInfoNetClient
             }
 
             $header = array_map(fn (?string $column): string => (string) $column, $header);
-            $header[0] = (string) preg_replace('/^\xEF\xBB\xBF/', '', $header[0]);
+            // The BOM comes before the first column's opening quote, so
+            // fgetcsv() keeps that column's quotes as part of its name.
+            $header[0] = trim((string) preg_replace('/^\xEF\xBB\xBF/', '', $header[0]), '"');
 
             while (($line = fgetcsv($stream, escape: '')) !== false) {
                 if (count($line) === count($header)) {

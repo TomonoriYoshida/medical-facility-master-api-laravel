@@ -30,9 +30,9 @@ trait ProvidesAttribution
                 'name' => 'アドレス・ベース・レジストリ（デジタル庁）の市区町村・町字・住居表示・地番の各マスターと位置参照データを加工して作成',
                 'url' => 'https://catalog.registries.digital.go.jp/rc/dataset/',
             ],
-            // 町丁目までしか求められない施設の座標の出典（厚生労働省、PDL1.0）。
+            // 町丁目までしか求められない施設の座標と、施設の診療時間の出典（厚生労働省、PDL1.0）。
             'medical_info_net_source' => [
-                'name' => '厚生労働省「医療情報ネット」のオープンデータ（所在地座標）を加工して作成',
+                'name' => '厚生労働省「医療情報ネット」のオープンデータ（所在地座標・診療時間・休診日）を加工して作成',
                 'url' => 'https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/newpage_43373.html',
             ],
             // 市区町村の人口の出典（総務省、政府標準利用規約・CC BY 4.0 互換）。集計APIの人口あたりの件数に使う。

@@ -6,7 +6,7 @@ use App\Enums\GeocodeLevel;
 use App\Enums\Prefecture;
 use App\Models\MedicalFacility;
 use App\Models\MedicalInfoNetLocation;
-use App\Services\Address\FacilityMatchingKeys;
+use App\Services\MedicalInfoNet\MedicalInfoNetMatcher;
 
 /**
  * Replaces a 町丁目-level (or missing) location with the 医療情報ネット's
@@ -17,13 +17,11 @@ use App\Services\Address\FacilityMatchingKeys;
  * where the two disagree by over 1km, the 医療情報ネット is the one off
  * about twice as often.
  *
- * A facility is matched only when exactly one 医療情報ネット facility of the
- * same type and municipality has its name (or, failing that, its address and
- * a name containing or contained in its own) -- counting the facilities it
- * lists without coordinates, so that a namesake with coordinates is not
- * mistaken for one without -- and the coordinates are kept only when plausible: within
- * 2km of the 町丁目 point, or with no location at all, within 30km of where
- * the municipality's other facilities are.
+ * A facility is matched as MedicalInfoNetMatcher does -- a match the
+ * 医療情報ネット lists without coordinates is still the match, so nothing is
+ * used -- and the coordinates are kept only when plausible: within 2km of the
+ * 町丁目 point, or with no location at all, within 30km of where the
+ * municipality's other facilities are.
  */
 final class MedicalInfoNetLocator
 {
@@ -33,7 +31,7 @@ final class MedicalInfoNetLocator
 
     private const int EARTH_RADIUS_METERS = 6_371_000;
 
-    public function __construct(private readonly FacilityMatchingKeys $keys) {}
+    public function __construct(private readonly MedicalInfoNetMatcher $matcher) {}
 
     /**
      * @param  array<int, array{institution_type: int, municipality_code: ?string, name: string, address: string}>  $facilities  facility id => attributes, all in $prefecture
@@ -53,11 +51,17 @@ final class MedicalInfoNetLocator
             return $results;
         }
 
-        [$byName, $byAddress] = $this->index($prefecture);
+        $index = $this->matcher->index(
+            MedicalInfoNetLocation::query()
+                ->where('municipality_code', 'like', $prefecture->value.'%')
+                ->select(['id', 'institution_type', 'municipality_code', 'name_key', 'address_key', 'latitude', 'longitude'])
+                ->toBase()
+                ->cursor(),
+        );
         $centers = null;
 
         foreach ($candidates as $id => $facility) {
-            $location = $this->match($facility, $byName, $byAddress);
+            $location = $this->matcher->match($facility, $index)['position'] ?? null;
 
             if ($location === null) {
                 continue;
@@ -73,62 +77,6 @@ final class MedicalInfoNetLocator
         }
 
         return $results;
-    }
-
-    /**
-     * @param  array{institution_type: int, municipality_code: ?string, name: string, address: string}  $facility
-     * @param  array<string, list<array{address: string, name: string, position: array{float, float}|null}>>  $byName
-     * @param  array<string, list<array{address: string, name: string, position: array{float, float}|null}>>  $byAddress
-     * @return array{float, float}|null
-     */
-    private function match(array $facility, array $byName, array $byAddress): ?array
-    {
-        $scope = $facility['institution_type'].'|'.$facility['municipality_code'].'|';
-        $name = $this->keys->name($facility['name']);
-        $address = $this->keys->address($facility['address']);
-
-        $matches = $byName[$scope.$name] ?? [];
-
-        if (count($matches) > 1) {
-            $matches = array_values(array_filter($matches, fn (array $entry): bool => $entry['address'] === $address));
-        }
-
-        // Same address, and a name that is clearly the same facility: one
-        // contains the other ("イムス札幌病院" / "札幌イムス札幌病院分院" do not;
-        // "イムス札幌病院" / "イムス札幌病院附属" do).
-        if ($matches === [] && mb_strlen($name) >= 3) {
-            $matches = array_values(array_filter(
-                $byAddress[$scope.$address] ?? [],
-                fn (array $entry): bool => mb_strlen($entry['name']) >= 3
-                    && (str_contains($entry['name'], $name) || str_contains($name, $entry['name'])),
-            ));
-        }
-
-        // The match may be a facility the 医療情報ネット lists without
-        // coordinates; it is still the match, so nothing is used.
-        return count($matches) === 1 ? $matches[0]['position'] : null;
-    }
-
-    /**
-     * @return array{0: array<string, list<array{address: string, name: string, position: array{float, float}|null}>>, 1: array<string, list<array{address: string, name: string, position: array{float, float}|null}>>}
-     */
-    private function index(Prefecture $prefecture): array
-    {
-        $byName = [];
-        $byAddress = [];
-
-        foreach (MedicalInfoNetLocation::query()->where('municipality_code', 'like', $prefecture->value.'%')->toBase()->cursor() as $row) {
-            $scope = $row->institution_type.'|'.$row->municipality_code.'|';
-            $entry = [
-                'address' => (string) $row->address_key,
-                'name' => (string) $row->name_key,
-                'position' => $row->latitude === null || $row->longitude === null ? null : [(float) $row->latitude, (float) $row->longitude],
-            ];
-            $byName[$scope.$row->name_key][] = $entry;
-            $byAddress[$scope.$row->address_key][] = $entry;
-        }
-
-        return [$byName, $byAddress];
     }
 
     /**

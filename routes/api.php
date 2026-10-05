@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\MedicalFacilityController;
 use App\Http\Controllers\Api\V1\MedicalFacilityEventController;
 use App\Http\Controllers\Api\V1\MedicalFacilityEventStatsController;
+use App\Http\Controllers\Api\V1\MedicalFacilityOpeningHoursController;
 use App\Http\Controllers\Api\V1\MedicalFacilityStatsController;
 use App\Http\Controllers\Api\V1\OptionController;
 use Illuminate\Support\Facades\Route;
@@ -12,6 +13,10 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
     Route::apiResource('medical-facilities', MedicalFacilityController::class)->only(['index', 'show']);
     Route::get('medical-facilities/{medicalFacility}/events', [MedicalFacilityEventController::class, 'facility'])
         ->name('medical-facilities.events.index');
+    // From the 医療情報ネット, which is updated twice a year.
+    Route::get('medical-facilities/{medicalFacility}/opening-hours', MedicalFacilityOpeningHoursController::class)
+        ->middleware('cache.headers:public;max_age=3600;etag')
+        ->name('medical-facilities.opening-hours');
     Route::get('medical-facility-events', [MedicalFacilityEventController::class, 'index'])
         ->name('medical-facility-events.index');
     Route::get('exports', [ExportController::class, 'index'])->name('exports.index');
