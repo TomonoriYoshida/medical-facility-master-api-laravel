@@ -54,6 +54,30 @@ class InsuredFacilityRecordMapperTest extends TestCase
         $this->assertSame([DepartmentBaseCategory::InternalMedicine, DepartmentBaseCategory::Gastroenterology], $mapped['department_categories']);
     }
 
+    public function test_vendor_private_use_characters_are_replaced_in_every_cell(): void
+    {
+        $record = [
+            'serial' => 1,
+            'rows' => [
+                $this->row([
+                    0 => '1',
+                    1 => '01,1248,9',
+                    // U+E38B is 𠮷 (written 吉), U+E192 一点しんにょうの辻, U+E0D0 unknown.
+                    2 => "\u{E38B}田医院",
+                    3 => "〒005－0813札幌市南区\u{E192}町１番",
+                    6 => "\u{E0D0}野　太郎",
+                    9 => '診療所',
+                ]),
+            ],
+        ];
+
+        $mapped = (new InsuredFacilityRecordMapper)->map($record, RhbCategory::Medical, RhbBureau::Hokkaido, '01');
+
+        $this->assertSame('吉田医院', $mapped['name']);
+        $this->assertSame('札幌市南区辻町１番', $mapped['address']);
+        $this->assertSame('〓野　太郎', $mapped['administrator_name']);
+    }
+
     public function test_a_clinic_within_the_medical_category_is_distinguished_from_a_hospital(): void
     {
         $record = [

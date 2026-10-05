@@ -25,6 +25,7 @@ final class InsuredFacilityRecordMapper
         private readonly BedAndDepartmentParser $bedAndDepartmentParser = new BedAndDepartmentParser,
         private readonly DepartmentCategoryClassifier $departmentCategoryClassifier = new DepartmentCategoryClassifier,
         private readonly InstitutionStatusParser $institutionStatusParser = new InstitutionStatusParser,
+        private readonly PrivateUseCharacters $privateUseCharacters = new PrivateUseCharacters,
     ) {}
 
     /**
@@ -33,7 +34,11 @@ final class InsuredFacilityRecordMapper
      */
     public function map(array $record, RhbCategory $category, RhbBureau $bureau, string $prefectureCode): array
     {
-        $rows = $record['rows'];
+        // 外字 first, in every cell, so that each parser sees real characters.
+        $rows = array_map(
+            fn (array $row): array => array_map($this->privateUseCharacters->replace(...), $row),
+            $record['rows'],
+        );
 
         $address = $this->addressParser->parse($rows[0][3] ?? '');
         $designation = $this->designationHistoryParser->parse($rows);
