@@ -8,10 +8,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\MedicalFacilityIndexRequest;
 use App\Http\Resources\Api\V1\MedicalFacilityResource;
 use App\Models\MedicalFacility;
+use App\Models\PublicHoliday;
+use App\Services\MedicalInfoNet\OpeningPeriods;
 use App\Services\Text\AddressNormalizer;
 use App\Services\Text\ItaijiNormalizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Carbon;
 
 class MedicalFacilityController extends Controller
 {
@@ -33,6 +36,7 @@ class MedicalFacilityController extends Controller
      *
      * 医療施設マスタをページネーション付きで返します。`q` は施設名・住所の全角半角/異体字ゆれを
      * 吸収したあいまい検索です。`latitude`・`longitude` を指定すると、`radius` 以内の施設を近い順に返します。
+     * `open_at` を指定すると、その日時に受付中の施設（厚生労働省「医療情報ネット」の診療時間で判定）だけを返します。
      */
     public function index(MedicalFacilityIndexRequest $request): AnonymousResourceCollection
     {
@@ -40,6 +44,7 @@ class MedicalFacilityController extends Controller
 
         $facilities = $this->applyFilters(MedicalFacility::query(), $filters)
             ->when($filters['q'] ?? null, fn ($query, $term) => $this->applySearch($query, $term))
+            ->when($filters['open_at'] ?? null, fn ($query, $value) => $this->applyOpenAt($query, (string) $value))
             ->when(isset($filters['latitude'], $filters['longitude']), fn ($query) => $this->applyNearby(
                 $query,
                 (float) $filters['latitude'],
@@ -79,6 +84,31 @@ class MedicalFacilityController extends Controller
     {
         return (new MedicalFacilityResource($medicalFacility))
             ->additional(['meta' => ['attribution' => $this->attribution()]]);
+    }
+
+    /**
+     * Facilities open at the given time in Japan (a time without an offset
+     * is read as Japan's): one of their opening periods covers it, on that
+     * weekday or, on a public holiday, on the holiday ranges, and in that
+     * week of the month.
+     *
+     * @param  Builder<MedicalFacility>  $query
+     * @return Builder<MedicalFacility>
+     */
+    private function applyOpenAt(Builder $query, string $value): Builder
+    {
+        $at = Carbon::parse($value, 'Asia/Tokyo')->setTimezone('Asia/Tokyo');
+        $day = PublicHoliday::isHoliday($at) ? OpeningPeriods::HOLIDAY : $at->isoWeekday();
+        $time = $at->format('H:i:s');
+
+        return $query->whereExists(fn ($periods) => $periods
+            ->selectRaw('1')
+            ->from('medical_facility_opening_periods')
+            ->whereColumn('medical_facility_opening_periods.medical_facility_id', 'medical_facilities.id')
+            ->where('day', $day)
+            ->where('opens', '<=', $time)
+            ->where('closes', '>', $time)
+            ->whereRaw('weeks & ? <> 0', [1 << intdiv($at->day - 1, 7)]));
     }
 
     /**

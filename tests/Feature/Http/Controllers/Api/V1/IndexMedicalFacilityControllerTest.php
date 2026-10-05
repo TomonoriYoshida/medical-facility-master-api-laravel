@@ -9,7 +9,10 @@ use App\Enums\MedicalFacilityStatus;
 use App\Enums\RhbBureau;
 use App\Models\KanjiVariant;
 use App\Models\MedicalFacility;
+use App\Models\MedicalFacilityOpeningPeriod;
 use App\Models\Municipality;
+use App\Models\PublicHoliday;
+use App\Services\MedicalInfoNet\OpeningPeriods;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -711,5 +714,57 @@ class IndexMedicalFacilityControllerTest extends TestCase
 
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors(['pagination']);
+    }
+
+    public function test_open_at_returns_facilities_open_at_that_time_in_japan(): void
+    {
+        // 2026-10-05 is a Monday, in the 1st week of the month.
+        $morning = $this->openOn(1, '09:00:00', '12:00:00');
+        $evening = $this->openOn(1, '17:00:00', '20:00:00');
+        $this->openOn(2, '09:00:00', '12:00:00');
+
+        $this->assertSame([$morning->id], $this->getJson('/api/v1/medical-facilities?open_at=2026-10-05T10:30')->json('data.*.id'));
+        // Closing time itself is closed; an offset is honored (08:00Z is 17:00 in Japan).
+        $this->assertSame([], $this->getJson('/api/v1/medical-facilities?open_at=2026-10-05T12:00')->json('data'));
+        $this->assertSame([$evening->id], $this->getJson('/api/v1/medical-facilities?open_at='.urlencode('2026-10-05T08:00:00Z'))->json('data.*.id'));
+    }
+
+    public function test_open_at_uses_the_holiday_hours_on_a_public_holiday(): void
+    {
+        PublicHoliday::factory()->create(['date' => '2026-10-12', 'name' => 'スポーツの日']);
+        $this->openOn(1, '09:00:00', '12:00:00');
+        $holiday = $this->openOn(OpeningPeriods::HOLIDAY, '09:00:00', '12:00:00');
+
+        $this->assertSame([$holiday->id], $this->getJson('/api/v1/medical-facilities?open_at=2026-10-12T10:00')->json('data.*.id'));
+    }
+
+    public function test_open_at_leaves_out_the_weeks_a_facility_is_closed(): void
+    {
+        // Closed on the 2nd Wednesday: 2026-10-14 is one, 2026-10-07 is the 1st.
+        $facility = $this->openOn(3, '09:00:00', '12:00:00', weeks: 0b11101);
+
+        $this->assertSame([$facility->id], $this->getJson('/api/v1/medical-facilities?open_at=2026-10-07T10:00')->json('data.*.id'));
+        $this->assertSame([], $this->getJson('/api/v1/medical-facilities?open_at=2026-10-14T10:00')->json('data'));
+    }
+
+    public function test_returns_422_when_open_at_is_not_a_date_time(): void
+    {
+        $this->getJson('/api/v1/medical-facilities?open_at=now')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('open_at');
+    }
+
+    private function openOn(int $day, string $opens, string $closes, int $weeks = OpeningPeriods::ALL_WEEKS): MedicalFacility
+    {
+        $facility = MedicalFacility::factory()->create();
+        MedicalFacilityOpeningPeriod::factory()->create([
+            'medical_facility_id' => $facility->id,
+            'day' => $day,
+            'opens' => $opens,
+            'closes' => $closes,
+            'weeks' => $weeks,
+        ]);
+
+        return $facility;
     }
 }

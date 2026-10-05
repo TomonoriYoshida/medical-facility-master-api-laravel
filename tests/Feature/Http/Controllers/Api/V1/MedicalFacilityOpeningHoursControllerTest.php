@@ -15,11 +15,11 @@ class MedicalFacilityOpeningHoursControllerTest extends TestCase
 
     public function test_returns_the_matching_facilitys_hours_and_days_off(): void
     {
-        $facility = $this->facility();
-        $location = $this->location('丸の内クリニック', [
+        $location = $this->location([
             'closures' => ['other' => "年末年始\nお盆", 'holidays' => true, 'monthly' => [['day' => 'sat', 'week' => 2]], 'weekly' => ['sun']],
         ]);
         $schedule = MedicalInfoNetSchedule::factory()->create(['source_id' => $location->source_id]);
+        $facility = $this->facility($location->source_id);
 
         $response = $this->getJson("/api/v1/medical-facilities/{$facility->id}/opening-hours");
 
@@ -41,8 +41,7 @@ class MedicalFacilityOpeningHoursControllerTest extends TestCase
 
     public function test_a_match_without_hours_or_days_off_has_them_empty(): void
     {
-        $facility = $this->facility();
-        $this->location('丸の内クリニック');
+        $facility = $this->facility($this->location()->source_id);
 
         $this->getJson("/api/v1/medical-facilities/{$facility->id}/opening-hours")
             ->assertOk()
@@ -50,21 +49,15 @@ class MedicalFacilityOpeningHoursControllerTest extends TestCase
             ->assertJsonPath('data.closures', null);
     }
 
-    public function test_data_is_null_without_exactly_one_match(): void
+    public function test_data_is_null_for_a_facility_without_a_match(): void
     {
-        $unmatched = $this->facility(['name' => '別のクリニック']);
-        $ambiguous = $this->facility(['name' => '同名クリニック', 'address' => '東京都千代田区丸の内１丁目５番１号']);
-        $withoutMunicipality = $this->facility(['municipality_code' => null]);
-        $this->location('丸の内クリニック');
-        $this->location('丸の内クリニック', ['institution_type' => InstitutionType::DentalClinic]);
-        $this->location('同名クリニック', ['address_key' => '千代田区丸の内1-6-1']);
-        $this->location('同名クリニック', ['address_key' => '千代田区丸の内1-7-1']);
+        // A namesake exists, but facilities:assign-opening-hours found no single match.
+        $this->location(['name_key' => '丸の内クリニック']);
+        $facility = $this->facility(null);
 
-        foreach ([$unmatched, $ambiguous, $withoutMunicipality] as $facility) {
-            $this->getJson("/api/v1/medical-facilities/{$facility->id}/opening-hours")
-                ->assertOk()
-                ->assertJsonPath('data', null);
-        }
+        $this->getJson("/api/v1/medical-facilities/{$facility->id}/opening-hours")
+            ->assertOk()
+            ->assertJsonPath('data', null);
     }
 
     public function test_returns_404_for_an_unknown_facility(): void
@@ -73,18 +66,12 @@ class MedicalFacilityOpeningHoursControllerTest extends TestCase
     }
 
     /**
-     * @param  array<string, mixed>  $attributes
+     * A facility matched (by facilities:assign-opening-hours) with the given 医療情報ネット ID.
      */
-    private function facility(array $attributes = []): MedicalFacility
+    private function facility(?string $medicalInfoNetId): MedicalFacility
     {
-        $facility = MedicalFacility::factory()->create([
-            'institution_type' => InstitutionType::Clinic,
-            'name' => '医療法人社団　丸の内クリニック',
-            'address' => '東京都千代田区丸の内１丁目９番１号　ビル２階',
-            ...array_diff_key($attributes, ['municipality_code' => true]),
-        ]);
-        // Assigned by facilities:assign-municipalities, not fillable.
-        $facility->forceFill(['municipality_code' => array_key_exists('municipality_code', $attributes) ? $attributes['municipality_code'] : '13101'])->save();
+        $facility = MedicalFacility::factory()->create(['institution_type' => InstitutionType::Clinic]);
+        $facility->forceFill(['medical_info_net_id' => $medicalInfoNetId])->save();
 
         return $facility;
     }
@@ -92,12 +79,8 @@ class MedicalFacilityOpeningHoursControllerTest extends TestCase
     /**
      * @param  array<string, mixed>  $attributes
      */
-    private function location(string $nameKey, array $attributes = []): MedicalInfoNetLocation
+    private function location(array $attributes = []): MedicalInfoNetLocation
     {
-        return MedicalInfoNetLocation::factory()->create([
-            'name_key' => $nameKey,
-            'address_key' => '千代田区丸の内1-9-1',
-            ...$attributes,
-        ]);
+        return MedicalInfoNetLocation::factory()->create($attributes);
     }
 }

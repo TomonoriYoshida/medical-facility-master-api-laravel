@@ -40,6 +40,11 @@ trait ProvidesAttribution
                 'name' => '総務省「住民基本台帳に基づく人口、人口動態及び世帯数」（市区町村別）を加工して作成',
                 'url' => 'https://www.soumu.go.jp/main_sosiki/jichi_gyousei/daityo/jinkou_jinkoudoutai-setaisuu.html',
             ],
+            // 祝日の出典（内閣府、政府標準利用規約・CC BY 4.0 互換）。祝日APIと、一覧APIの open_at に使う。
+            'holiday_source' => [
+                'name' => '内閣府「国民の祝日について」の祝日一覧（CSV）を加工して作成',
+                'url' => 'https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html',
+            ],
             // The bureaus this installation actually draws from (RhbScope).
             'sources' => collect(app(RhbScope::class)->bureaus())
                 ->map(fn (array $bureau) => [

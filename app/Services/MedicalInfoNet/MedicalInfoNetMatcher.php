@@ -2,8 +2,6 @@
 
 namespace App\Services\MedicalInfoNet;
 
-use App\Models\MedicalFacility;
-use App\Models\MedicalInfoNetLocation;
 use App\Services\Address\FacilityMatchingKeys;
 use stdClass;
 
@@ -75,35 +73,5 @@ final class MedicalInfoNetMatcher
         }
 
         return count($matches) === 1 ? $matches[0] : null;
-    }
-
-    /**
-     * The one facility's counterpart, looked up among only the rows that
-     * could match it (same type and municipality, and the same name or
-     * address).
-     */
-    public function find(MedicalFacility $facility): ?MedicalInfoNetLocation
-    {
-        if ($facility->municipality_code === null) {
-            return null;
-        }
-
-        $candidates = MedicalInfoNetLocation::query()
-            ->where('municipality_code', $facility->municipality_code)
-            ->where('institution_type', $facility->institution_type)
-            ->where(fn ($query) => $query
-                ->where('name_key', $this->keys->name($facility->name))
-                ->orWhere('address_key', $this->keys->address($facility->address)))
-            ->toBase()
-            ->get();
-
-        $match = $this->match([
-            'institution_type' => $facility->institution_type->value,
-            'municipality_code' => $facility->municipality_code,
-            'name' => $facility->name,
-            'address' => $facility->address,
-        ], $this->index($candidates));
-
-        return $match === null ? null : MedicalInfoNetLocation::query()->find($match['id']);
     }
 }
