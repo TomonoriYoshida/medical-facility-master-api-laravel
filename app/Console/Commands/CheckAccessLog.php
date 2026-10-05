@@ -12,13 +12,15 @@ use Illuminate\Support\Facades\Log;
 /**
  * Summarizes one day of the access log and flags what an attack leaves
  * behind: rate-limited (429) responses, a vulnerability scanner's not-found
- * (404) responses, or one IP sending far more than any visitor. The rate
- * limit already blocks the traffic; this is so that someone notices. Run
+ * (404) responses, one IP asking for paths only a scanner does (.env, .git,
+ * *.php; BlockScanners already turns it away), or one IP sending far more
+ * than any visitor. The rate limit and the block already stop the traffic;
+ * this is so that someone notices. Run
  * with --date to investigate a past day (the log is kept 14 days).
  */
 #[Signature('access-log:check
     {--date= : 集計する日（YYYY-MM-DD、日本時間）。省略時は前日}')]
-#[Description('Summarize a day of the access log and alert when it looks like an attack (many 429 / 404 responses, or one IP sending far more requests than usual)')]
+#[Description('Summarize a day of the access log and alert when it looks like an attack (many 429 / 404 responses, one IP probing for .env / .git / .php, or one IP sending far more requests than usual)')]
 class CheckAccessLog extends Command
 {
     private const string TIMEZONE = 'Asia/Tokyo';
@@ -52,6 +54,7 @@ class CheckAccessLog extends Command
         Log::info("access-log: {$day} のリクエスト {$summary->total}件", [
             'rate_limited' => $summary->count(429),
             'not_found' => $summary->count(404),
+            'blocked' => $summary->count(403),
             'server_errors' => $summary->countServerErrors(),
         ]);
 
@@ -100,6 +103,7 @@ class CheckAccessLog extends Command
         $this->components->twoColumnDetail('リクエスト', number_format($summary->total));
         $this->components->twoColumnDetail('429（レート制限）', number_format($summary->count(429)));
         $this->components->twoColumnDetail('404（見つからない）', number_format($summary->count(404)));
+        $this->components->twoColumnDetail('403（脆弱性探しとして遮断）', number_format($summary->count(403)));
         $this->components->twoColumnDetail('5xx（サーバーエラー）', number_format($summary->countServerErrors()));
 
         $this->table(['IP', 'リクエスト', '429'], array_map(
@@ -133,6 +137,10 @@ class CheckAccessLog extends Command
 
         if ($summary->count(404) >= $thresholds['not_found']) {
             $findings[] = "404（見つからない）が{$summary->count(404)}件あります（しきい値 {$thresholds['not_found']}）。";
+        }
+
+        foreach ($summary->ipsProbingAtLeast($thresholds['scanner_requests_per_ip']) as $ip => $requests) {
+            $findings[] = "{$ip} から脆弱性探し（.env・.git・.php など）のリクエストが{$requests}件あります（しきい値 {$thresholds['scanner_requests_per_ip']}）。";
         }
 
         foreach ($summary->ipsSendingAtLeast($thresholds['requests_per_ip']) as $ip => $requests) {

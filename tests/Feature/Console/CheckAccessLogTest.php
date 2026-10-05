@@ -19,7 +19,7 @@ class CheckAccessLogTest extends TestCase
         mkdir($this->directory);
         config([
             'api.access_log.path' => "{$this->directory}/access.log",
-            'api.access_log.alert_thresholds' => ['rate_limited' => 3, 'not_found' => 3, 'requests_per_ip' => 5],
+            'api.access_log.alert_thresholds' => ['rate_limited' => 3, 'not_found' => 3, 'requests_per_ip' => 5, 'scanner_requests_per_ip' => 2],
         ]);
         $this->travelTo(CarbonImmutable::parse('2026-10-01 00:15', 'Asia/Tokyo'));
     }
@@ -63,6 +63,18 @@ class CheckAccessLogTest extends TestCase
         ]);
 
         $this->assertReported('404（見つからない）が3件あります（しきい値 3）。');
+    }
+
+    public function test_one_ip_probing_for_scanner_paths_is_reported_even_once_blocked(): void
+    {
+        $this->writeLog([
+            $this->entry(ip: '203.0.113.7', status: 404, uri: '/.env'),
+            // Turned away by BlockScanners from then on.
+            $this->entry(ip: '203.0.113.7', status: 403, uri: '/.git/config'),
+            $this->entry(ip: '203.0.113.8', status: 404, uri: '/.env'),
+        ]);
+
+        $this->assertReported('203.0.113.7 から脆弱性探し（.env・.git・.php など）のリクエストが2件あります（しきい値 2）。');
     }
 
     public function test_one_ip_sending_far_more_requests_than_usual_is_reported(): void

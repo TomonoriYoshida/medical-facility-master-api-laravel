@@ -431,6 +431,7 @@ scheduler が毎日 00:15（日本時間）に `access-log:check` を実行し�
 | 429（レート制限）の件数 | 50件以上（`ACCESS_ALERT_RATE_LIMITED`） | 大量のリクエスト（スクレイピング、負荷をかける攻撃） |
 | 404（見つからない）の件数 | 200件以上（`ACCESS_ALERT_NOT_FOUND`） | 脆弱性スキャン（`/wp-login.php`、`/.env` などを探す） |
 | 1つの IP アドレスからのリクエスト数 | 3,000件以上（`ACCESS_ALERT_REQUESTS_PER_IP`） | 1か所からの大量アクセス。全国分をページ送りで取得する正当な利用は約2,250件です |
+| 1つの IP アドレスからの脆弱性探し | 10件以上（`ACCESS_ALERT_SCANNER_REQUESTS_PER_IP`） | `.env`・`.git`・`.php` などを探す脆弱性スキャン。下記の自動遮断のあとの 403 も数えます |
 
 レート制限（1分60回）が攻撃を防いでいても、この確認がなければ気づけません。通常のアクセスで通知が来る場合は、しきい値を `.env` で調整してください。集計した件数は、通知がない日もアプリのログに `access-log:` で始まる行として残ります。
 
@@ -462,6 +463,18 @@ rm /tmp/access.jsonl   # IP アドレスを含むので、調べ終わったら�
 ```
 
 `jq` の時刻は UTC です。
+
+### 脆弱性探しの自動遮断
+
+`.env`・`.git` などのドットファイル（`.well-known` を除く）、`.php`、`wp-admin` などの WordPress、`cgi-bin`、`phpmyadmin`、`.sql`・`.bak` は、このアプリにはなく、脆弱性スキャンしか求めません（`App\Services\AccessLog\ScannerPaths`）。これらを求めた IP アドレスには、その後24時間、API を含むすべてのリクエストに 403 を返します（`App\Http\Middleware\BlockScanners`）。探したリクエスト自体には、ほかの存在しないパスと同じ 404 を返します。
+
+- 遮断するとアプリのログに `scanner-block:` で始まる警告を1行残します（通知はしません。通知は上の毎日の確認で行います）。
+- 遮断の時間は `SCANNER_BLOCK_HOURS`（0で無効）で変えられます。遮断した IP アドレスはファイルのキャッシュに保存するため、コンテナを作り直すデプロイで解除されます。
+- 正当な利用者を遮断してしまった場合は、次のように解除します。
+
+```bash
+docker compose exec app php artisan tinker --execute 'Cache::store("file")->forget("scanner-block:198.51.100.1");'
+```
 
 ### IP アドレスの遮断
 
