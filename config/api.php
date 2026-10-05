@@ -79,7 +79,27 @@ return [
             'rate_limited' => (int) env('ACCESS_ALERT_RATE_LIMITED', 50),
             'not_found' => (int) env('ACCESS_ALERT_NOT_FOUND', 200),
             'requests_per_ip' => (int) env('ACCESS_ALERT_REQUESTS_PER_IP', 3000),
+            // Requests from one IP for paths only a scanner asks for
+            // (App\Services\AccessLog\ScannerPaths), blocked or not.
+            'scanner_requests_per_ip' => (int) env('ACCESS_ALERT_SCANNER_REQUESTS_PER_IP', 10),
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Scanner Block
+    |--------------------------------------------------------------------------
+    |
+    | A client that asks for a path only a vulnerability scanner does (.env,
+    | .git, *.php, wp-admin...) is answered 403 for this many hours, whatever
+    | it asks for (App\Http\Middleware\BlockScanners). 0 turns it off. The
+    | blocked IPs live in their own cache store, read on every request.
+    |
+    */
+
+    'scanner_block' => [
+        'hours' => (int) env('SCANNER_BLOCK_HOURS', 24),
+        'store' => env('SCANNER_BLOCK_CACHE_STORE', 'file'),
     ],
 
 ];

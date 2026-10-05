@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\BlockScanners;
 use App\Http\Middleware\SetSecurityHeaders;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -22,6 +23,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->throttleApi();
         $middleware->append(SetSecurityHeaders::class);
+        // Inside the CORS and security headers (so a blocked browser client
+        // can read why), but before routing, the rate limiter and the app.
+        $middleware->append(BlockScanners::class);
 
         // The only web routes are the root redirect and the read-only docs,
         // which need no session, cookies or CSRF protection; starting a

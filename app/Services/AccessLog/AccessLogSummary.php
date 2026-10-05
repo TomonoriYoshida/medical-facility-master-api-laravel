@@ -29,6 +29,9 @@ class AccessLogSummary
     /** @var array<string, int> */
     private array $notFoundByPath = [];
 
+    /** @var array<string, int> requests for paths only a scanner asks for (ScannerPaths) */
+    private array $scannerRequestsByIp = [];
+
     private function __construct(
         private readonly float $from,
         private readonly float $to,
@@ -104,6 +107,20 @@ class AccessLogSummary
     }
 
     /**
+     * IPs that asked for at least this many paths only a scanner asks for,
+     * most first.
+     *
+     * @return array<string, int>
+     */
+    public function ipsProbingAtLeast(int $requests): array
+    {
+        $ips = array_filter($this->scannerRequestsByIp, fn (int $count): bool => $count >= $requests);
+        arsort($ips);
+
+        return $ips;
+    }
+
+    /**
      * @return array<string, int>
      */
     public function topNotFoundPaths(int $limit): array
@@ -141,10 +158,15 @@ class AccessLogSummary
             $this->rateLimitedByIp[$ip] = ($this->rateLimitedByIp[$ip] ?? 0) + 1;
         }
 
+        $uri = is_string($request['uri'] ?? null) ? $request['uri'] : '-';
+        $path = strtok($uri, '?') ?: $uri;
+
         if ($status === 404) {
-            $uri = is_string($request['uri'] ?? null) ? $request['uri'] : '-';
-            $path = strtok($uri, '?') ?: $uri;
             $this->notFoundByPath[$path] = ($this->notFoundByPath[$path] ?? 0) + 1;
+        }
+
+        if (ScannerPaths::matches($path)) {
+            $this->scannerRequestsByIp[$ip] = ($this->scannerRequestsByIp[$ip] ?? 0) + 1;
         }
     }
 }
