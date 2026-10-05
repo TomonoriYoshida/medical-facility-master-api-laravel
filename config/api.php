@@ -44,6 +44,9 @@ return [
 
     'export_downloads_per_hour' => (int) env('EXPORT_DOWNLOADS_PER_HOUR', 30),
 
+    // Where the rendered docs pages are kept (App\Http\Middleware\CachesDocsResponse).
+    'docs_cache_store' => env('DOCS_CACHE_STORE', 'file'),
+
     /*
     |--------------------------------------------------------------------------
     | Stats Computations

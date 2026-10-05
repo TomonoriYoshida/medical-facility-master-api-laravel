@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\CachesDocsResponse;
 use Dedoc\Scramble\Http\Middleware\RestrictedDocsAccess;
 
 return [
@@ -152,6 +153,11 @@ return [
         'web',
         'throttle:docs',
         RestrictedDocsAccess::class,
+        // The document changes only with a deploy: browsers may keep it an
+        // hour and revalidate with the ETag, and the server keeps the
+        // rendered pages (CachesDocsResponse).
+        'cache.headers:public;max_age=3600;etag',
+        CachesDocsResponse::class,
     ],
 
     'extensions' => [],
