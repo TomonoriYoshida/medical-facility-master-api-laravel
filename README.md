@@ -37,6 +37,7 @@
 | GET | `/api/v1/medical-facility-events` | 全国の変化の一覧（ページネーション付き） |
 | GET | `/api/v1/stats/facilities` | 施設数の集計（月・市区町村・診療科目ごと） |
 | GET | `/api/v1/stats/facility-events` | 新規・廃止の件数の集計（月・市区町村ごと） |
+| GET | `/api/v1/holidays` | 祝日の一覧（内閣府の「国民の祝日」） |
 | GET | `/api/v1/options` | 絞り込みの選択肢（都道府県・施設種別・診療科目など） |
 | GET | `/api/v1/exports` | 一括ダウンロードのファイル一覧（都道府県ごと・全体の CSV / JSON Lines） |
 
@@ -55,6 +56,7 @@
 | `designation_reason` | 登録理由（`新規` / `交代` / `組織変更` / `移転` など） |
 | `latitude` / `longitude` / `radius` | 近隣検索。指定した地点から `radius` メートル以内（既定1000、最大20000）の施設を近い順に返し、各施設に `distance`（メートル）を付ける。`sort` と併用するとその順 |
 | `municipality_code` | 市区町村コード（5桁、例: `13101` 千代田区） |
+| `open_at` | この日時に受付中の施設（ISO 8601。時差の指定がなければ日本時間、例: `2026-10-05T10:30`）。下記「診療時間・休診日」の判定方法を参照 |
 | `updated_since` | この日時以降に内容が変わった施設（ISO 8601、例: `2026-10-01T05:00:00Z`。廃止・再開も含む） |
 | `sort` | 並び順（`designated_on` / `-designated_on`: 指定年月日の古い順 / 新しい順、`updated_at` / `-updated_at`: 内容が変わった日時の古い順 / 新しい順。省略時は id 順） |
 | `per_page` | 1ページの件数（既定25、最大100） |
@@ -241,9 +243,19 @@ GET /api/v1/medical-facilities/1234/opening-hours
 }
 ```
 
-- **照合**: 医療情報ネットの施設は厚生局のデータと共通のコードを持たないため、同じ市区町村・施設種別で名称（または所在地）が一致する施設が1つだけ見つかったときに返します。見つからないときは `data` が `null` です。照合できる施設は、病院・薬局で約94%、診療所・歯科診療所で約80%です（2026年6月版）。
+- **照合**: 医療情報ネットの施設は厚生局のデータと共通のコードを持たないため、同じ市区町村・施設種別で名称（または所在地）が一致する施設が1つだけ見つかったときに返します。見つからないときは `data` が `null` です。照合できる施設は、病院・薬局で約94%、診療所・歯科診療所で約80%です（2026年6月版）。照合は毎朝（`facilities:assign-opening-hours`）行うため、新しく載った施設は翌朝から返ります。
 - **時刻**: 公開データのまま `HH:MM` で返します。終了が開始より早いもの（夜間など）もそのままです。受付時間は時間帯をまたいで1つの時間帯にだけ入っていることがあります。
 - **鮮度**: `published_on` の時点の情報です。臨時の休診や最近の変更は含まないため、画面に出すときは「最新の情報は医療機関に確認してください」などの注意書きを添えてください。
+- **受付中の施設を探す（`open_at`）**: 一覧APIに `open_at` を渡すと、その日時に受付中の施設だけを返します。
+  - 診療科ごと・曜日ごとに、受付時間が載っていれば受付時間、なければ診療時間で判定し、どれかの診療科が開いていれば対象にします（薬局は営業時間）。
+  - 祝日（`GET /api/v1/holidays` の日）は「祝」の時刻で判定します。終了が開始より早い時刻は、翌日の早朝まで開いているものとして扱います。
+  - 毎週の休み・祝日の休みがある曜日は、時刻が載っていても対象外にします。「第2水曜」のような休みは、その週だけ対象外にします。年末年始などの自由記述の休みは判定できません。
+  - 照合できなかった施設は、開いていても返りません。
+
+```http
+GET /api/v1/medical-facilities?open_at=2026-10-05T10:30&latitude=35.681236&longitude=139.767125&radius=1000
+GET /api/v1/holidays?from=2026-01-01&to=2026-12-31
+```
 
 ### 施設数の集計
 
@@ -300,7 +312,9 @@ GET /api/v1/stats/facility-events?group_by=month&event_type=2&occurred_from=2025
           2. 施設ごとに新規作成 / 変更検出 / 再開を判定して保存し、イベントを記録（Sync 層）
           3. 今回のデータに載っていない施設を「廃止」にする（廃止検知）
 毎月2日 04:30  medical-info-net:import  医療情報ネットの座標・診療時間・休診日を取り込む（年2回の更新時だけ）
+毎月4日 04:50  holidays:import  内閣府の祝日一覧を取り込む（翌年分は例年2月ごろに追加される）
 06:30  facilities:geocode  新規・移転した施設の座標を住所から求める（アドレス・ベース・レジストリ）
+06:50  facilities:assign-opening-hours  施設を医療情報ネットと照合し、受付中の判定用の時間帯を作る（施設・医療情報ネットが変わったときだけ）
 07:00  rhb:status     すべての局・カテゴリが取込済みで最新かを確認
 07:10  rhb:export     一括ダウンロードのファイルを作成（データが変わったときだけ）
 ```
@@ -417,7 +431,7 @@ vendor/bin/sail php vendor/bin/phpstan analyse --memory-limit=1G   # 静的解�
 
 各局の出典URLは、すべてのレスポンスの `meta.attribution.sources` に含めています。
 
-市区町村（`municipality`）と座標（`location`）は、デジタル庁の[アドレス・ベース・レジストリ](https://catalog.registries.digital.go.jp/rc/dataset/)（CC BY 4.0）を加工して作成しています。出典は `meta.attribution.address_source` にあります。町丁目までしか求められない施設の座標と、施設の診療時間・休診日は、厚生労働省の[医療情報ネットのオープンデータ](https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/newpage_43373.html)（PDL1.0）を加工して作成しています（`meta.attribution.medical_info_net_source`）。集計APIの市区町村の人口（`population`）は、総務省の[住民基本台帳に基づく人口、人口動態及び世帯数](https://www.soumu.go.jp/main_sosiki/jichi_gyousei/daityo/jinkou_jinkoudoutai-setaisuu.html)（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.population_source`）。
+市区町村（`municipality`）と座標（`location`）は、デジタル庁の[アドレス・ベース・レジストリ](https://catalog.registries.digital.go.jp/rc/dataset/)（CC BY 4.0）を加工して作成しています。出典は `meta.attribution.address_source` にあります。町丁目までしか求められない施設の座標と、施設の診療時間・休診日は、厚生労働省の[医療情報ネットのオープンデータ](https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/newpage_43373.html)（PDL1.0）を加工して作成しています（`meta.attribution.medical_info_net_source`）。集計APIの市区町村の人口（`population`）は、総務省の[住民基本台帳に基づく人口、人口動態及び世帯数](https://www.soumu.go.jp/main_sosiki/jichi_gyousei/daityo/jinkou_jinkoudoutai-setaisuu.html)（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.population_source`）。祝日（`/api/v1/holidays`、`open_at` の判定）は、内閣府の[「国民の祝日について」](https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html)の祝日一覧（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.holiday_source`）。
 
 - **免責**: データの正確性・完全性は保証しません。最新かつ正確な情報は、各地方厚生局の公表資料を確認してください。
 - **個人名は提供しません**: 元データの開設者名・管理者名は個人名を含むため、APIでは返しません。

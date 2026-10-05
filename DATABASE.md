@@ -45,6 +45,7 @@ medical_info_net_locations (1) ── (0..1) medical_info_net_schedules   ※ so
 | `longitude` | decimal(10,6) | ✓ | 所在地座標（経度）。同上。`(latitude, longitude)`の複合インデックスで近隣検索の範囲を絞る |
 | `geocode_level` | unsignedTinyInteger | ✓ | `App\Enums\GeocodeLevel` をcast。座標の精度。1:住居（〇番〇号） 2:街区（〇番） 3:地番（〇番地〇） 4:地番（枝番なし。同じ地番の別の枝番の座標） 5:町丁目（代表点） 6:医療情報ネット（厚生労働省の座標。下記「ジオコーディング」）。座標がない施設はnull |
 | `geocoded_address` | string | ✓ | 座標を求めたときの`address`。`address`と異なる施設（新規・移転）だけを`facilities:geocode`が処理する。座標を求められなかった施設にも入れ、毎日の再試行を防ぐ（`--all`で再試行） |
+| `medical_info_net_id` | string(20) | ✓ | 照合できた医療情報ネットの施設ID（`medical_info_net_locations.source_id`）。`facilities:assign-opening-hours`が毎朝付け直す（`updated_at`は動かさない。APIでは返さず、診療時間のAPIと`open_at`の判定に使う）。照合できない施設はnull |
 | `phone_number` | string | ✓ | 電話番号。区切り文字を`0X-XXXX-XXXX`形式のハイフンに正規化して保持（括弧区切り・連続ハイフンのタイプミスのみ補正、桁の欠落など元データから正しい形を機械的に復元できないものはそのまま保持） |
 | `founder_name` | string | ✓ | 開設者（法人名＋代表者名等、原本の表記をそのまま保持）。個人名を含むことが多いため、**APIでは返さない** |
 | `administrator_name` | string | ✓ | 管理者名（常に個人名）。**APIでは返さない** |
@@ -114,11 +115,11 @@ CSVを更新してシーダーを再実行したあとは、`facilities:assign-m
 | `published_on` | date | 元データの公開時点（例: 2026-06-01） |
 | `created_at` / `updated_at` | datetime | |
 
-インデックス: `(municipality_code, institution_type)`。取り込むと、座標が町丁目・医療情報ネット・なしの施設の`geocoded_address`を空にし、次の`facilities:geocode`で付け直す（`updated_at`は座標が実際に変わった施設だけ動く）。
+インデックス: `(municipality_code, institution_type)`、`source_id`。取り込むと、座標が町丁目・医療情報ネット・なしの施設の`geocoded_address`を空にし、次の`facilities:geocode`で付け直す（`updated_at`は座標が実際に変わった施設だけ動く）。
 
 ## `medical_info_net_schedules`
 
-医療情報ネットの施設ごとの診療時間（`App\Services\MedicalInfoNet\MedicalInfoNetHours`）。病院・診療所・歯科診療所は「診療科・診療時間票」（診療科×時間帯1〜3ごとの行。施設ごとにまとまって並ぶ前提で、同じIDが離れて現れたら取り込みを失敗させる）、薬局は施設票の開店時間帯1〜4から作る。`GET /api/v1/medical-facilities/{id}/opening-hours`が、照合できた施設について返す。
+医療情報ネットの施設ごとの診療時間（`App\Services\MedicalInfoNet\MedicalInfoNetHours`）。照合できた施設（`medical_facilities.medical_info_net_id`）について、診療時間のAPIがそのまま返し、`facilities:assign-opening-hours`が`medical_facility_opening_periods`を作る。病院・診療所・歯科診療所は「診療科・診療時間票」（診療科×時間帯1〜3ごとの行。施設ごとにまとまって並ぶ前提で、同じIDが離れて現れたら取り込みを失敗させる）、薬局は施設票の開店時間帯1〜4から作る。
 
 | カラム | 型 | 説明 |
 |---|---|---|
@@ -128,6 +129,31 @@ CSVを更新してシーダーを再実行したあとは、`facilities:assign-m
 | `created_at` / `updated_at` | datetime | |
 
 全国の取り込み（2026年6月版、ローカルで約1分）: 203,903施設、うち診療時間あり201,196施設。指定中の施設のうち診療時間を返せるのは、病院93.7%・診療所81.3%・歯科診療所79.4%・薬局94.0%（2026-10-05計測）。
+
+## `medical_facility_opening_periods`
+
+施設が開いている曜日・時間帯（一覧APIの`open_at`の判定用）。`facilities:assign-opening-hours`が、照合できた医療情報ネットの診療時間から作り直す（`App\Services\MedicalInfoNet\OpeningPeriods`）。施設・医療情報ネットとも前回から変わっていなければ（件数と`updated_at`・ID の最大値で判定）飛ばす。市区町村コードだけを付け直したとき（`facilities:assign-municipalities`）は`updated_at`が動かないため、`--force`で作り直す。
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| `id` | bigint (PK) | 内部主キー |
+| `medical_facility_id` | bigint (FK) | `medical_facilities.id`（施設の削除で消える） |
+| `day` | unsignedTinyInteger | 1（月）〜7（日）、8は祝日 |
+| `opens` / `closes` | time | 開始・終了（終了は含まない。日付をまたぐ時間帯は24:00で切り、翌日の0:00からの行を加える） |
+| `weeks` | unsignedTinyInteger | 対象の週（ビット0が第1週〜ビット4が第5週）。「第2水曜休診」なら水曜の行のビット1を落とす。通常は31 |
+
+作り方: 診療科ごと・曜日ごとに、受付時間があれば受付時間、なければ診療時間を使い、全診療科を重ねて1日の時間帯にまとめる（どれかの科が開いていれば開いている）。毎週の休み・祝日の休みは、時刻が載っていてもその曜日の行を作らない（安全側）。自由記述の休み（年末年始など）は使わない。インデックス: `(medical_facility_id, day, opens)`。全国で約164万行、作り直しはローカルで約50秒（2026-10-05計測）。
+
+## `public_holidays`
+
+内閣府「国民の祝日について」の祝日一覧（政府標準利用規約、CC BY 4.0 互換）。1955年から翌年末まで（約1,070日。振替休日・国民の休日を含む）。`holidays:import`が毎月4日に丸ごと入れ替える（1,000日未満しか読めなければ失敗させ、前の一覧を残す）。`GET /api/v1/holidays`で返し、`open_at`ではこの日を「祝」の時刻で判定する。
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| `id` | bigint (PK) | 内部主キー |
+| `date` | date | 祝日（ユニーク） |
+| `name` | string | 名称（元日、休日 など） |
+| `created_at` / `updated_at` | datetime | |
 
 ## `municipality_populations`
 

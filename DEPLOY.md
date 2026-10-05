@@ -205,6 +205,17 @@ docker compose run --rm app php artisan medical-info-net:import --force
 
 - 取り込み直すと、座標が町丁目・医療情報ネット・なしの施設が、次の 06:30 の `facilities:geocode` で付け直す対象になります（`updated_at` は座標が実際に変わった施設だけ動きます）。
 
+### 受付中の施設の検索・祝日（初回）
+
+`open_at` と祝日の機能を含む版へ初めて更新したときは、`migrate` の後に次を実行します（照合は全国で数分）。以降は scheduler が、祝日を毎月4日に、照合を毎朝 06:50 に行います。
+
+```bash
+docker compose run --rm app php artisan holidays:import
+docker compose run --rm app php artisan facilities:assign-opening-hours
+```
+
+- 照合するまで、診療時間のAPIはすべての施設で `data: null` を返し、`open_at` には何も当てはまりません。`migrate` の直後に続けて実行してください。
+
 ## 4. バックアップ
 
 `medical_facility_events`（開業・廃止などの変更履歴）は、取込を重ねて記録していくデータです。各局の公開データから作り直せないので、定期的にバックアップします。

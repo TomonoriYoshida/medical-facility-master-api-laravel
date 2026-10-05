@@ -6,7 +6,6 @@ use App\Http\Controllers\Api\V1\Concerns\ProvidesAttribution;
 use App\Http\Controllers\Controller;
 use App\Models\MedicalFacility;
 use App\Models\MedicalInfoNetLocation;
-use App\Services\MedicalInfoNet\MedicalInfoNetMatcher;
 use Illuminate\Http\JsonResponse;
 
 class MedicalFacilityOpeningHoursController extends Controller
@@ -18,15 +17,19 @@ class MedicalFacilityOpeningHoursController extends Controller
      *
      * 厚生労働省「医療情報ネット」のオープンデータ（年2回、6月・12月に更新）にある、1つの施設の診療時間と休診日を返します。
      * 地方厚生局のデータとは共通のコードがないため、同じ市区町村・施設種別で名称（または所在地）が一致する施設が1つだけ見つかったときに返し、
-     * 見つからないときは `data` が `null` になります。`published_on` の時点の情報で、臨時の休診や最近の変更は含みません。
+     * 見つからないときは `data` が `null` になります（照合は毎朝行うため、新しく載った施設は翌朝から返ります）。`published_on` の時点の情報で、臨時の休診や最近の変更は含みません。
      *
      * `schedules` は同じ診療時間の診療科をまとめたもので、`slots` は時間帯（午前・午後など）ごとの曜日別の時刻です（`day` の `holiday` は祝日）。
      * 時刻は公開データのまま `HH:MM` で返し、終了が開始より早いもの（夜間など）もそのままです。薬局は `departments` が空で、受付時間はありません。
      * `closures` は定休日で、`weekly` が毎週の休み、`monthly` が「第2水曜」のような決まった週の休み、`holidays` が祝日に休むか、`other` がその他（自由記述）です。
      */
-    public function __invoke(MedicalFacility $medicalFacility, MedicalInfoNetMatcher $matcher): JsonResponse
+    public function __invoke(MedicalFacility $medicalFacility): JsonResponse
     {
-        $location = $matcher->find($medicalFacility)?->load('schedule');
+        // Matched by facilities:assign-opening-hours, which open_at also uses.
+        $location = $medicalFacility->medical_info_net_id === null ? null : MedicalInfoNetLocation::query()
+            ->with('schedule')
+            ->where('source_id', $medicalFacility->medical_info_net_id)
+            ->first();
 
         return response()->json([
             'data' => $location === null ? null : $this->openingHours($location),

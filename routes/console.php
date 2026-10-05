@@ -37,10 +37,25 @@ Schedule::command('population:import')
     ->timezone('Asia/Tokyo')
     ->withoutOverlapping();
 
+// The Cabinet Office adds the next year's holidays around February; the
+// list is small, so it is simply read again every month.
+Schedule::command('holidays:import')
+    ->monthlyOn(4, '04:50')
+    ->timezone('Asia/Tokyo')
+    ->withoutOverlapping();
+
 // Locates new and moved facilities; after the import (05:30, ~20 minutes)
 // and before rhb:export, so the day's files carry the locations.
 Schedule::command('facilities:geocode')
     ->dailyAt('06:30')
+    ->timezone('Asia/Tokyo')
+    ->withoutOverlapping();
+
+// Matches facilities with the 医療情報ネット and stores when they are open,
+// after the import (05:30, ~20 minutes); skipped when neither the facilities
+// nor the 医療情報ネット (re-imported on the 2nd at 04:30) changed.
+Schedule::command('facilities:assign-opening-hours')
+    ->dailyAt('06:50')
     ->timezone('Asia/Tokyo')
     ->withoutOverlapping();
 
