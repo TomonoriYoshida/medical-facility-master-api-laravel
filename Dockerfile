@@ -52,14 +52,19 @@ RUN composer dump-autoload --optimize --classmap-authoritative --no-dev \
 # `optimize`: its view:cache step fails because the app has no
 # resources/views (the only page, Scramble's docs UI, is a vendor view).
 # No scramble:cache: measured, restoring the cached document costs as much
-# as generating it (~0.15s a request either way); the docs routes are
-# rate-limited instead.
+# as generating it. The rendered docs pages are kept as strings instead
+# (CachesDocsResponse), keyed by the route cache written here, and the web
+# server's container renders them once before serving (docs:warm; a
+# failure there only leaves the first visitor to wait).
 COPY --chmod=755 <<'EOF' /usr/local/bin/docker-entrypoint
 #!/bin/sh
 set -e
 php artisan config:cache
 php artisan route:cache
 php artisan event:cache
+if [ "$1" = "frankenphp" ]; then
+    php artisan docs:warm || true
+fi
 exec "$@"
 EOF
 
