@@ -195,6 +195,16 @@ docker compose run --rm app php artisan facilities:geocode
 - 以降は scheduler が毎日 06:30 に、新規・移転した施設だけを処理します。
 - アドレス・ベース・レジストリの位置データは拡充されていくため、ときどき（数か月に1回程度）`facilities:geocode --all` で全施設を付け直すと、町丁目レベルだった施設が番地レベルになることがあります。
 
+### 診療時間・休診日（初回）
+
+診療時間の機能を含む版へ初めて更新したときは、`migrate` の後に次を実行します（全国で数分）。取り込み済みの版でも、施設IDと診療時間を入れるために `--force` で取り込み直します。以降は scheduler が毎月2日に新しい版を確認します。
+
+```bash
+docker compose run --rm app php artisan medical-info-net:import --force
+```
+
+- 取り込み直すと、座標が町丁目・医療情報ネット・なしの施設が、次の 06:30 の `facilities:geocode` で付け直す対象になります（`updated_at` は座標が実際に変わった施設だけ動きます）。
+
 ## 4. バックアップ
 
 `medical_facility_events`（開業・廃止などの変更履歴）は、取込を重ねて記録していくデータです。各局の公開データから作り直せないので、定期的にバックアップします。

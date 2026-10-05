@@ -15,6 +15,7 @@
 
 ```
 medical_facilities (1) ──< (多) medical_facility_events
+medical_info_net_locations (1) ── (0..1) medical_info_net_schedules   ※ source_id で対応。施設とは名称・所在地で照合
 ```
 
 診療科目は`medical_facilities.department_categories`に大分類タグの配列として直接持たせており、
@@ -98,20 +99,35 @@ CSVを更新してシーダーを再実行したあとは、`facilities:assign-m
 
 ## `medical_info_net_locations`
 
-厚生労働省「医療情報ネット」のオープンデータ（年2回、6月・12月に公開。PDL1.0）の施設の座標。`medical-info-net:import`が最新の版で丸ごと入れ替える（取り込み済みの版は飛ばすので、毎月2日に確認する）。範囲外（`RHB_PREFECTURES`）の都道府県と、座標が「0.0」の施設（元データの約8%）は入れない。医療情報ネットの施設は厚生局データと共通のコードを持たないため、照合用のキーで突き合わせる。
+厚生労働省「医療情報ネット」のオープンデータ（年2回、6月・12月に公開。PDL1.0）の施設の座標と定休日。`medical-info-net:import`が最新の版で`medical_info_net_schedules`と一緒に丸ごと入れ替える（取り込み済みの版は飛ばすので、毎月2日に確認する）。範囲外（`RHB_PREFECTURES`）の都道府県は入れない。座標が「0.0」の施設（元データの約8%）も、名称での照合で同名の別施設と取り違えないよう、座標なしで入れる。医療情報ネットの施設は厚生局データと共通のコードを持たないため、照合用のキーで突き合わせる（`App\Services\MedicalInfoNet\MedicalInfoNetMatcher`。下記「ジオコーディング」の5と同じ規則）。
 
 | カラム | 型 | 説明 |
 |---|---|---|
 | `id` | bigint (PK) | 内部主キー |
+| `source_id` | string(20) / null | 医療情報ネットの施設ID。診療時間票（`medical_info_net_schedules`）との対応に使う。この列を追加する前に取り込んだ行はnull（`medical-info-net:import --force`で埋まる） |
 | `institution_type` | unsignedTinyInteger | `App\Enums\InstitutionType`。病院・診療所・歯科診療所・薬局の各ファイルに対応 |
 | `municipality_code` | char(5) | 都道府県コード＋市区町村コード（元データの3桁）。`medical_facilities.municipality_code`と同じ体系 |
 | `name_key` | string | `App\Services\Address\FacilityMatchingKeys::name()`。正規化した名称から先頭の法人名（「医療法人社団明生会」など）を除いたもの |
 | `address_key` | string | `FacilityMatchingKeys::address()`。都道府県名と、番地より後ろ（建物名・階）を除き、番地を「1-2-3」の形にした所在地 |
-| `latitude` / `longitude` | decimal(10,6) | 元データの所在地座標 |
+| `latitude` / `longitude` | decimal(10,6) / null | 元データの所在地座標。「0.0」はnull |
+| `closures` | json / null | 定休日 `{weekly: ["sun"], monthly: [{week: 2, day: "wed"}], holidays: bool|null, other: string|null}`。元データの「毎週決まった曜日に休診」などの列は、名前に反して**1が診療・0が休診**（定義書のとおり）。`monthly`は毎週の休みと重なる曜日を除く。`other`は自由記述（元データの「（改行）」は改行にする）。該当する列がすべて空ならnull |
 | `published_on` | date | 元データの公開時点（例: 2026-06-01） |
 | `created_at` / `updated_at` | datetime | |
 
 インデックス: `(municipality_code, institution_type)`。取り込むと、座標が町丁目・医療情報ネット・なしの施設の`geocoded_address`を空にし、次の`facilities:geocode`で付け直す（`updated_at`は座標が実際に変わった施設だけ動く）。
+
+## `medical_info_net_schedules`
+
+医療情報ネットの施設ごとの診療時間（`App\Services\MedicalInfoNet\MedicalInfoNetHours`）。病院・診療所・歯科診療所は「診療科・診療時間票」（診療科×時間帯1〜3ごとの行。施設ごとにまとまって並ぶ前提で、同じIDが離れて現れたら取り込みを失敗させる）、薬局は施設票の開店時間帯1〜4から作る。`GET /api/v1/medical-facilities/{id}/opening-hours`が、照合できた施設について返す。
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| `id` | bigint (PK) | 内部主キー |
+| `source_id` | string(20) | 医療情報ネットの施設ID（`medical_info_net_locations.source_id`）。ユニーク |
+| `schedules` | json | `[{departments: ["内科", "小児科"], slots: [{number: 1, days: [{day: "mon", opens: "09:00", closes: "12:30", reception_opens: "08:45", reception_closes: "12:00"}]}]}]`。同じ時間の診療科を1つにまとめる。時刻がない時間帯・曜日は含めない。時刻は元データのまま（`HH:MM`以外は捨てる。終了が開始より早い曜日の時刻が全国で約3,000件ある）。薬局は`departments`が空で受付時刻はnull |
+| `created_at` / `updated_at` | datetime | |
+
+全国の取り込み（2026年6月版、ローカルで約1分）: 203,903施設、うち診療時間あり201,196施設。指定中の施設のうち診療時間を返せるのは、病院93.7%・診療所81.3%・歯科診療所79.4%・薬局94.0%（2026-10-05計測）。
 
 ## `municipality_populations`
 

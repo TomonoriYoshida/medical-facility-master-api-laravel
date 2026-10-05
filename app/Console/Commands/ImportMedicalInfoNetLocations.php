@@ -10,15 +10,16 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 /**
- * Imports the latest 医療情報ネット coordinates (published each June and
- * December), skipping a publication already imported. Facilities whose
+ * Imports the latest 医療情報ネット coordinates, opening hours and days off
+ * (published each June and December), skipping a publication already
+ * imported. Facilities whose
  * location could use them (町丁目-level, 医療情報ネット or none) are then
  * marked for facilities:geocode to locate again on its next run; updated_at
  * moves only for those whose location actually changes.
  */
 #[Signature('medical-info-net:import
     {--force : 取り込み済みの版でも取り込み直す}')]
-#[Description('Import facility coordinates from the MHLW 医療情報ネット open data')]
+#[Description('Import facility coordinates and opening hours from the MHLW 医療情報ネット open data')]
 class ImportMedicalInfoNetLocations extends Command
 {
     public function handle(MedicalInfoNetImporter $importer): int
@@ -38,7 +39,7 @@ class ImportMedicalInfoNetLocations extends Command
             ->toBase()
             ->update(['geocoded_address' => null]);
 
-        $this->components->info("{$result['published_on']->toDateString()}時点の版から{$result['imported']}件（うち座標あり{$result['located']}件）を取り込みました。{$marked}件の施設を、次回の facilities:geocode で付け直します。");
+        $this->components->info("{$result['published_on']->toDateString()}時点の版から{$result['imported']}件（うち座標あり{$result['located']}件、診療時間あり{$result['scheduled']}件）を取り込みました。{$marked}件の施設を、次回の facilities:geocode で付け直します。");
 
         return Command::SUCCESS;
     }
