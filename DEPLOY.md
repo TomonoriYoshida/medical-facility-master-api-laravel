@@ -503,6 +503,105 @@ sudo journalctl -u ssh --since yesterday | grep -c "Invalid user"   # 存在し�
 3. `docker compose up -d` を実行します。Caddy が新しいホスト名で証明書を取得します。
 4. フロントエンドの `API_ORIGIN` を新しいホスト名に変え、ワークフローを実行し直します（「デモ用フロントエンドとの接続」）。
 
+## 10. 秘密情報が漏れたときの対応
+
+秘密情報が漏れたとき、または漏れた疑いがあるときの手順です。漏れたものを作り直す前に、漏れた経路（git への混入、画面共有、乗っ取られた端末など）を塞いでください。塞がないまま作り直しても、新しい値がまた漏れます。
+
+### まず判断すること
+
+| 状況 | 対応 |
+|---|---|
+| 秘密情報だけが漏れた（git に入れた、チャットに貼った、画面に映したなど） | 漏れたものだけを、下の「作り直す手順」で作り直す |
+| 手元の PC が乗っ取られた疑い（マルウェア、怪しいパッケージを入れたなど） | 手元にある秘密情報（SSH 鍵、GitHub の認証、OCI の API キー）をすべて作り直す |
+| サーバーに侵入された疑い（知らない SSH ログイン、見覚えのないプロセス・cron・ファイルなど） | 下の「サーバーに侵入された場合」の手順で、サーバーごと作り直す |
+
+git に入れてしまった秘密情報は、履歴から消しても、すでに複製や GitHub のキャッシュに残っている可能性があります。履歴の書き換えではなく、作り直しで対応してください。
+
+### 秘密情報の一覧
+
+影響の大きい順です。
+
+| 秘密情報 | 置き場所 | 漏れたときの影響 |
+|---|---|---|
+| SSH 鍵 | 手元の `~/.ssh/id_ed25519` | サーバーへのログイン、GitHub への push |
+| OCI の API キー | 手元の `~/.oci/` | インスタンスの操作・削除、有料のリソースの作成 |
+| GitHub の認証（gh CLI のトークン） | 手元の `~/.config/gh/` | リポジトリの書き換え（ワークフローに手を入れられると、フロントエンドの公開内容も変えられる） |
+| `DB_PASSWORD` / `DB_ROOT_PASSWORD` | サーバーの `.env` | データベースの読み書き。MySQL は外部に公開していないため、使うにはサーバーの中に入る必要がある |
+| `APP_KEY` | サーバーの `.env` | セッションや署名付き URL の偽造。このアプリは暗号化したデータを保存していない |
+| `LOG_ALERT_WEBHOOK_URL` | サーバーの `.env` | 通知先のチャンネルへの偽の通知 |
+| healthchecks.io の ping URL | サーバーの `.env`（`RHB_HEALTHCHECK_*`）、`~/.egress-check.env` | 偽の「成功」を送られ、失敗や停止に気づけなくなる |
+
+### 作り直す手順
+
+**SSH 鍵**: 古い鍵が使えるうちに新しい鍵を登録し、新しい鍵でログインできることを確かめてから古い鍵を消します。順番を逆にすると、サーバーに入れなくなります。
+
+```bash
+# 手元で新しい鍵を作る（パスフレーズを付ける）
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_new
+
+# サーバーに新しい公開鍵を追加し、新しい鍵でログインできることを確かめる
+ssh-copy-id -i ~/.ssh/id_ed25519_new.pub ubuntu@<サーバーの IP>
+ssh -i ~/.ssh/id_ed25519_new ubuntu@<サーバーの IP>
+
+# サーバーの ~/.ssh/authorized_keys から古い鍵の行を消す
+```
+
+GitHub の Settings → SSH and GPG keys に新しい公開鍵を追加し、古い鍵を削除します。最後に、手元の `id_ed25519` / `id_ed25519.pub` を新しい鍵に置き換えます。
+
+**OCI の API キー**: コンソールの「My profile」→「API keys」で新しいキーを追加し、`~/.oci/config` の `key_file` と `fingerprint` を新しいキーに変えてから、古いキーを削除します。その後、「Audit」で見覚えのない操作（インスタンスの作成・変更、ポリシーの変更など）がないかを確認します。
+
+**GitHub の認証**: GitHub の Settings → Applications → Authorized OAuth Apps で「GitHub CLI」のアクセスを取り消し（Revoke）、手元で `gh auth login` をやり直します。`gh auth logout` だけでは、GitHub 側のトークンは無効になりません。その後、次を確認します。
+
+- Settings → Security log に、見覚えのない操作がないか
+- Settings → Developer settings → Personal access tokens に、作った覚えのないトークンがないか
+- 両リポジトリに、見覚えのないコミット・ブランチ・ワークフローの変更がないか
+
+**データベースのパスワード**: MySQL のパスワードは、データベースを最初に作るときにだけ `.env` から設定されます。`.env` を書き換えるだけでは変わらないため、MySQL の中で変えてから `.env` を合わせます。
+
+```bash
+cd ~/medical-facility-master-api-laravel
+NEW_DB_PASSWORD=$(openssl rand -hex 24)
+NEW_DB_ROOT_PASSWORD=$(openssl rand -hex 24)
+
+docker compose exec -T mysql sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD"' <<SQL
+ALTER USER 'app'@'%' IDENTIFIED BY '${NEW_DB_PASSWORD}';
+ALTER USER 'root'@'%' IDENTIFIED BY '${NEW_DB_ROOT_PASSWORD}';
+ALTER USER 'root'@'localhost' IDENTIFIED BY '${NEW_DB_ROOT_PASSWORD}';
+SQL
+
+sed -i "s/^DB_PASSWORD=.*/DB_PASSWORD=${NEW_DB_PASSWORD}/; s/^DB_ROOT_PASSWORD=.*/DB_ROOT_PASSWORD=${NEW_DB_ROOT_PASSWORD}/" .env
+docker compose up -d     # 新しいパスワードでコンテナを作り直す
+docker compose ps        # すべて running（app と mysql は healthy）になることを確認
+```
+
+- `DB_USERNAME` を `app` 以外にしている場合は、`'app'` をその名前に変えてください。
+- `ALTER USER` から `docker compose up -d` が終わるまでの間（1分ほど）、API はデータベースに接続できずエラーを返します。
+- バックアップのスクリプト（「4. バックアップ」）は MySQL のコンテナの環境変数からパスワードを読むため、変更は不要です。
+
+**APP_KEY**:
+
+```bash
+echo "base64:$(openssl rand -base64 32)"   # この出力で .env の APP_KEY を書き換える
+docker compose up -d
+```
+
+このアプリは暗号化したデータを保存していないため、古いキーを `APP_PREVIOUS_KEYS` に残す必要はありません。
+
+**Webhook の URL**: Discord のチャンネルの「連携サービス」→「ウェブフック」で古いウェブフックを削除し、新しく作ります（Slack の場合は Incoming Webhook を作り直します）。`.env` の `LOG_ALERT_WEBHOOK_URL` を書き換え、`docker compose up -d` の後、「エラーの通知」のテストで届くことを確認します。
+
+**healthchecks.io の ping URL**: チェックの URL は変えられないため、同じ設定のチェックを新しく作り、URL を `.env`（`RHB_HEALTHCHECK_*`）または `~/.egress-check.env` に設定してから、古いチェックを削除します。`.env` を変えた場合は `docker compose up -d` で反映します。
+
+### サーバーに侵入された場合
+
+侵入されたサーバーは、悪意のあるプログラムや鍵が残っている可能性があるため、修復ではなく作り直します。
+
+1. 調べられるように、OCI のコンソールでブート・ボリュームのバックアップを取ります。データベースのバックアップ（`~/backups`）も手元にコピーします（`scp -r ubuntu@<サーバーの IP>:backups ./`）。
+2. 手元の SSH 鍵を作り直します（「作り直す手順」）。
+3. 新しいインスタンスを作り、「1. サーバーの準備」と「2. 初回デプロイ」の手順で構築します。`.env` の秘密情報（`APP_KEY`、データベースのパスワード）は新しく生成します。Webhook と healthchecks.io の URL も作り直します。
+4. データベースは、**侵入より前の日付**のバックアップから復元します（「4. バックアップ」の復元）。侵入の後のバックアップは、書き換えられている可能性があります。取得した元のファイルや一括ダウンロードのファイルはバックアップに含まれないため、復元の後に `rhb:download` と `rhb:export` を実行して作り直します。
+5. 古いインスタンスを停止し、調べ終わったら削除します。
+6. IP アドレスが変わるため、`SERVER_NAME` と `APP_URL`、フロントエンドの `API_ORIGIN` を新しい値にします（「9. 独自ドメインへの切り替え」の手順と同じ）。
+
 ## 補足
 
 - **ファイアウォール**: Docker が公開したポートは、Ubuntu の ufw の設定を経由せずに外部から到達できます。この構成で公開しているのは 80 / 443 だけ（MySQL は公開していない）ですが、`compose.production.yaml` にポートを追加するときは注意してください。
