@@ -383,6 +383,49 @@ fi
 5 * * * * $HOME/check-egress.sh >> $HOME/check-egress.log 2>&1
 ```
 
+### 秘密情報の持ち出し（おとりのキー）
+
+偽の AWS のアクセスキーを、盗まれやすい場所に置きます。偽のキーなので何もできませんが、誰かが使った時点でメールが届きます。攻撃者は盗んだ AWS のキーをすぐに試すことが多いため、`.env` や手元の PC から秘密情報が持ち出されたことに気づけます。キーは [Canarytokens](https://canarytokens.org/)（Thinkst 社の無料サービス）で作ります。
+
+| 置き場所 | 気づける漏洩 |
+|---|---|
+| サーバーの `.env`（`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`） | アプリの脆弱性やサーバーへの侵入による、`.env` やコンテナの環境変数の持ち出し |
+| サーバーの `~/.aws/credentials` | サーバーへの侵入 |
+| 手元の PC の `~/.aws/credentials` | 手元の PC の乗っ取り（悪意のあるパッケージは `~/.aws` をよく狙います） |
+
+- このアプリは AWS を使っていません（キャッシュとキューはデータベース、ファイルはローカル、メールはログ）。`.env` の `AWS_*` はどこからも使われないため、置いても動作は変わりません。将来 S3 などを使うときは、本物のキーに置き換えてください。
+- おとりのキーは git に入れないでください（`.env.example` にも書かない）。CI の gitleaks で失敗します。
+- 通知が届いたら、「10. 秘密情報が漏れたときの対応」に進みます。
+
+設定手順:
+
+1. [Canarytokens](https://canarytokens.org/) で「AWS API Key」を選び、通知先のメールアドレスと、置き場所が分かるメモ（例: `medical-facility server .env`）を入れて作ります。メモは Thinkst 社にも見えるため、秘密情報は書きません。どこから漏れたかが分かるよう、置き場所ごとに1つずつ作ります。
+2. サーバーの `.env` の末尾に、1つめのキーを追加し、コンテナに反映します。
+
+   ```bash
+   # .env に追記する（値は Canarytokens に表示されたもの）
+   # AWS_ACCESS_KEY_ID=AKIA...
+   # AWS_SECRET_ACCESS_KEY=...
+   docker compose up -d
+   ```
+
+3. サーバーと手元の PC の `~/.aws/credentials` に、それぞれのキーを置きます。Canarytokens には、このファイルの形式で表示されます。
+
+   ```bash
+   mkdir -p ~/.aws && chmod 700 ~/.aws
+   install -m 600 /dev/null ~/.aws/credentials   # ファイルがまだないときだけ
+   # ~/.aws/credentials に追記する（本物の AWS のキーがあれば、[default] ではなく別のプロファイル名にする）
+   # [default]
+   # aws_access_key_id = AKIA...
+   # aws_secret_access_key = ...
+   ```
+
+4. 届くことを確かめる場合は、`aws` コマンドがある環境で、キーを使ってみます。エラーが返るのは正常で、数分〜20分ほどでメールが届きます。
+
+   ```bash
+   AWS_ACCESS_KEY_ID=AKIA... AWS_SECRET_ACCESS_KEY=... aws sts get-caller-identity
+   ```
+
 ## 7. ログ
 
 | ログ | 場所 | 内容 |
