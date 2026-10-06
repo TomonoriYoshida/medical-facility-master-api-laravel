@@ -496,6 +496,64 @@ SSH へのログインの試行は、アプリではなく Ubuntu のログに�
 sudo journalctl -u ssh --since yesterday | grep -c "Invalid user"   # 存在しないユーザーでの試行の件数
 ```
 
+### SSH ログインの通知
+
+SSH でログインがあるたびに、Discord に通知します。自分のログインのたびにも届くため、身に覚えのない通知が来たら侵入を疑い、「10. 秘密情報が漏れたときの対応」に進みます。
+
+ログインのときに PAM（`pam_exec`）が小さなスクリプトを実行し、Webhook に送ります。
+
+- エラーの通知（「7. ログ」）とは別に、SSH 専用のチャンネルとウェブフックを作ってください。同じチャンネルだとエラーの通知に埋もれます。
+- 通知が届かなくても（Discord の障害など）ログインはでき、最大5秒待つだけです。
+- VS Code の Remote-SSH や `scp` も、接続のたびに通知されます。
+- 分かるのはログインした時点までです。root を取られた後は、通知を止められます。OCI のコンソール接続（シリアル・コンソール）は SSH を通らないため、通知されません。
+
+設定手順:
+
+1. Discord で SSH 用のチャンネルを作り、「連携サービス」→「ウェブフック」でウェブフックを作って URL をコピーします（末尾に `/slack` は付けません）。
+2. URL を root だけが読めるファイルに保存します。`sudoedit` で開いたファイルに `WEBHOOK_URL=https://discord.com/api/webhooks/...` の1行を書きます。
+
+   ```bash
+   sudo install -m 600 /dev/null /etc/ssh-login-notify.env
+   sudoedit /etc/ssh-login-notify.env
+   ```
+
+3. `sudoedit /usr/local/sbin/ssh-login-notify` で次のスクリプトを作り、`sudo chmod 700 /usr/local/sbin/ssh-login-notify` します。
+
+```bash
+#!/usr/bin/env bash
+# Posts each SSH login to a Discord channel. pam_exec runs it as root for
+# every sshd session (/etc/pam.d/sshd), with PAM_TYPE, PAM_USER and
+# PAM_RHOST in the environment. The PAM line is "optional" and curl gives up
+# after 5 seconds, so a Discord outage never blocks or delays a login for long.
+set -euo pipefail
+
+[[ "${PAM_TYPE:-}" == open_session ]] || exit 0
+
+WEBHOOK_URL=
+# shellcheck source=/dev/null
+[[ -f /etc/ssh-login-notify.env ]] && source /etc/ssh-login-notify.env
+[[ -n "$WEBHOOK_URL" ]] || exit 0
+
+message="SSH login: ${PAM_USER:-?} from ${PAM_RHOST:-?} to $(hostname) at $(TZ=Asia/Tokyo date '+%F %T') JST"
+# allowed_mentions: never let the text ping anyone, whatever it contains.
+payload=$(python3 -c 'import json, sys; print(json.dumps({"content": sys.argv[1], "allowed_mentions": {"parse": []}}))' "$message")
+curl -fsS -m 5 -H 'Content-Type: application/json' --data-raw "$payload" "$WEBHOOK_URL" > /dev/null
+```
+
+4. スクリプトを直接実行し、Discord に届くことを確認します。
+
+   ```bash
+   sudo PAM_TYPE=open_session PAM_USER=test PAM_RHOST=192.0.2.1 /usr/local/sbin/ssh-login-notify
+   ```
+
+5. SSH のログインで実行されるよう、PAM の設定に1行追加します。
+
+   ```bash
+   echo 'session optional pam_exec.so quiet /usr/local/sbin/ssh-login-notify' | sudo tee -a /etc/pam.d/sshd
+   ```
+
+6. **今のセッションを開いたまま**、別の端末から SSH でログインし、通知が届くことを確認します。PAM の設定を間違えてログインできなくなっても、今のセッションから直せます。
+
 ## 9. 独自ドメインへの切り替え
 
 1. ドメインの DNS に、サーバーの IP アドレスを指す A レコードを追加します（例: `api.example.com`）。
