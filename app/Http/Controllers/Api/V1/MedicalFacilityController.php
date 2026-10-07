@@ -15,6 +15,7 @@ use App\Services\Text\ItaijiNormalizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class MedicalFacilityController extends Controller
 {
@@ -71,8 +72,18 @@ class MedicalFacilityController extends Controller
                 ->additional(['meta' => ['attribution' => $this->attribution()]]);
         }
 
-        return MedicalFacilityResource::collection($facilities->paginate($request->perPage())->withQueryString())
-            ->additional(['meta' => ['max_page' => $request->maxPage(), 'attribution' => $this->attribution()]]);
+        $totalCap = $request->totalCap();
+        $paginator = $facilities->paginate(
+            $request->perPage(),
+            total: $totalCap === null ? null : fn (): int => $this->countUpTo($facilities, $totalCap),
+        );
+
+        return MedicalFacilityResource::collection($paginator->withQueryString())
+            ->additional(['meta' => [
+                'max_page' => $request->maxPage(),
+                'total_is_capped' => $this->isCapped($paginator->total(), $totalCap),
+                'attribution' => $this->attribution(),
+            ]]);
     }
 
     /**
@@ -157,6 +168,29 @@ class MedicalFacilityController extends Controller
             ->whereBetween('longitude', [$longitude - $longitudeDelta, $longitude + $longitudeDelta])
             ->whereRaw("{$distance} <= ?", [$longitude, $latitude, $radius])
             ->when($orderByDistance, fn (Builder $query) => $query->orderBy('distance'));
+    }
+
+    /**
+     * Counts the matching rows, but no more than $limit: MySQL stops reading
+     * once it has found that many, instead of reading every match. The
+     * nearby search's distance column and ordering are dropped first, as
+     * the count needs neither.
+     *
+     * @param  Builder<MedicalFacility>  $query
+     */
+    private function countUpTo(Builder $query, int $limit): int
+    {
+        $rows = $query->clone()->reorder()->select($query->qualifyColumn('id'))->limit($limit);
+
+        return DB::query()->fromSub($rows, 'counted_rows')->count();
+    }
+
+    /**
+     * Whether counting stopped at the cap, so the real total is larger.
+     */
+    private function isCapped(int $total, ?int $totalCap): bool
+    {
+        return $totalCap !== null && $total >= $totalCap;
     }
 
     /**
