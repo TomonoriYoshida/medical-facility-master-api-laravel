@@ -2,6 +2,9 @@
 
 namespace App\Enums;
 
+/**
+ * 施設種別
+ */
 enum InstitutionType: int
 {
     case Hospital = 1;

@@ -6,7 +6,10 @@ use App\Models\MedicalFacility;
 use App\Models\User;
 use App\Observers\MedicalFacilityObserver;
 use App\Services\Address\MunicipalityResolver;
+use App\Services\OpenApi\DescribesEnumCases;
+use App\Services\OpenApi\LocalizesDescriptions;
 use App\Services\Text\ItaijiNormalizer;
+use Dedoc\Scramble\Scramble;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -38,6 +41,11 @@ class AppServiceProvider extends ServiceProvider
         // The nullable $user is what lets the gate run for guests at all:
         // without it, Laravel denies every unauthenticated request.
         Gate::define('viewApiDocs', fn (?User $user): bool => true);
+
+        Scramble::configure()->withDocumentTransformers([
+            DescribesEnumCases::class,
+            LocalizesDescriptions::class,
+        ]);
 
         // A list that reports meta.max_page (LimitsPageDepth) must not link
         // past it: links.next stops at the last allowed page, and links.last

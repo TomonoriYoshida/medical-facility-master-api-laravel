@@ -9,6 +9,11 @@ use Tests\TestCase;
  * resources (and as SchemaVariant on the event resource). Client generators
  * (the demo frontend uses openapi-typescript) depend on them, so they are
  * pinned here.
+ *
+ * The docs are written in Japanese for the API's users. Scramble's own
+ * English is replaced (App\Services\OpenApi), and an enum's docblock is
+ * published as its schema description, so notes for developers go in
+ * `//` comments there.
  */
 class OpenApiDocumentTest extends TestCase
 {
@@ -76,6 +81,78 @@ class OpenApiDocumentTest extends TestCase
         $this->assertSame(['key', 'label', 'count'], $schema['data']['items']['required']);
         $this->assertSame(['string', 'null'], $schema['data']['items']['properties']['key']['type']);
         $this->assertSame('integer', $schema['data']['items']['properties']['count']['type']);
+    }
+
+    public function test_enum_schemas_list_their_codes_with_japanese_names(): void
+    {
+        $schemas = $this->document()['components']['schemas'];
+
+        $this->assertStringStartsWith('施設の指定一覧を公開している地方厚生局。', $schemas['RhbBureau']['description']);
+        $this->assertStringContainsString("\n\n| コード | 名前 |\n|---|---|\n| `1` | 北海道厚生局 |", $schemas['RhbBureau']['description']);
+        $this->assertStringContainsString('| `13` | 東京都 |', $schemas['Prefecture']['description']);
+        $this->assertStringContainsString('| `26` | 総合診療科 |', $schemas['DepartmentBaseCategory']['description']);
+        $this->assertStringContainsString("単位\n\n| |\n|---|\n| `month` <br/> 指定年月日の月", $schemas['FacilityStatsGrouping']['description']);
+    }
+
+    public function test_facility_fields_have_examples(): void
+    {
+        $facility = $this->document()['components']['schemas']['MedicalFacilityResource'];
+
+        foreach ($facility['properties'] as $name => $property) {
+            $this->assertNotEmpty($property['examples'] ?? null, $name);
+        }
+        $this->assertSame([['code' => 1, 'label' => '病院']], $facility['properties']['institution_type']['examples']);
+        $this->assertSame(['0114611'], $facility['properties']['facility_code']['examples']);
+    }
+
+    public function test_scramble_descriptions_are_in_japanese(): void
+    {
+        $document = $this->document();
+        $events = $document['paths']['/v1/medical-facility-events']['get'];
+
+        $this->assertSame('1ページあたりの件数', $events['responses']['200']['content']['application/json']['schema']['properties']['meta']['properties']['per_page']['description']);
+        $this->assertSame('パラメータの誤り', $document['components']['responses']['ValidationException']['description']);
+        $this->assertSame('`MedicalFacilityResource` のページ', $document['paths']['/v1/medical-facilities']['get']['responses']['200']['description']);
+        $this->assertSame('施設のID（施設一覧の `id`）', $document['paths']['/v1/medical-facilities/{medicalFacility}']['get']['parameters'][0]['description']);
+    }
+
+    /**
+     * Code spans are left out: they hold parameter names and values.
+     */
+    public function test_no_description_is_written_in_english(): void
+    {
+        foreach ($this->descriptions($this->document()) as $path => $description) {
+            $prose = preg_replace('/`[^`]*`/', '', $description);
+
+            $this->assertDoesNotMatchRegularExpression('/\b[A-Za-z]{3,}(?: [A-Za-z]{2,}){2,}/', $prose, $path);
+        }
+    }
+
+    public function test_lines_wrapped_in_japanese_text_are_joined(): void
+    {
+        $description = $this->document()['paths']['/v1/medical-facilities/{medicalFacility}/opening-hours']['get']['description'];
+
+        $this->assertStringContainsString('ときに返し、見つからないときは', $description);
+        $this->assertStringContainsString("含みません。\n\n`schedules` は", $description);
+    }
+
+    /**
+     * @param  array<mixed>  $node
+     * @return array<string, string> Every description and summary, by its path in the document.
+     */
+    private function descriptions(array $node, string $path = ''): array
+    {
+        $descriptions = [];
+
+        foreach ($node as $key => $value) {
+            if (is_array($value)) {
+                $descriptions += $this->descriptions($value, "{$path}/{$key}");
+            } elseif (in_array($key, ['description', 'summary'], true) && is_string($value)) {
+                $descriptions["{$path}/{$key}"] = $value;
+            }
+        }
+
+        return $descriptions;
     }
 
     /**

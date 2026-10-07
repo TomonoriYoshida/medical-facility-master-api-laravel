@@ -55,20 +55,53 @@ class MedicalFacilityEventResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
+            /**
+             * 変化の記録のID
+             *
+             * @example 302536
+             */
             'id' => $this->id,
+            /**
+             * 変化の種類（1: 新規 / 2: 廃止 / 3: 変更）
+             *
+             * @example {"code": 3, "label": "変更"}
+             */
             'event_type' => $this->codeAndLabel($this->event_type),
+            /**
+             * 記録のきっかけ。1: 初回取込（取込を始めた時点で掲載されていた施設）/ 2: 検知（公開データの比較で見つかった実際の変化）/
+             * 3: 再処理（同じ公開データを取り込み直したときの、このAPIの処理の変更による差分）
+             *
+             * @example {"code": 2, "label": "検知"}
+             */
             'origin' => $this->codeAndLabel($this->origin),
-            /** 変化が載った公開データの日付（実際の開業・廃止・変更の日ではない） */
+            /**
+             * 変化が載った公開データの日付（YYYY-MM-DD）。実際の開業・廃止・変更の日ではない
+             *
+             * @example 2026-10-01
+             */
             'occurred_on' => $this->occurred_on->toDateString(),
-            /** この変化を検知した（公開データを取り込んだ）日時 */
+            /**
+             * この変化を検知した（公開データを取り込んだ）日時
+             *
+             * @example 2026-10-06T20:41:47.000000Z
+             */
             'detected_at' => $this->created_at?->toJSON(),
-            /** 過去に廃止された施設が再び掲載されたか（新規のときのみ） */
+            /**
+             * 過去に廃止された施設が再び掲載されたか（新規のときだけ含まれる）
+             *
+             * @example false
+             */
             'is_reopening' => $this->when(
                 $this->event_type === MedicalFacilityEventType::Created,
                 // Selected by MedicalFacilityEventController, not a column.
                 fn (): bool => (bool) $this->resource->getAttribute('is_reopening'),
             ),
-            /** 変更された項目と変更前後の値（変更のときのみ） */
+            /**
+             * 変更された項目と変更前後の値（変更のときだけ含まれる）。`attribute` は施設の項目名、
+             * `old`・`new` はその項目の施設詳細と同じ形の値
+             *
+             * @example [{"attribute": "designation_history", "old": [{"reason": "組織変更", "date": "2020-10-01"}], "new": [{"reason": "組織変更", "date": "2026-10-01"}]}]
+             */
             'changes' => $this->when(
                 $this->event_type === MedicalFacilityEventType::Updated,
                 fn (): array => $this->changes(),

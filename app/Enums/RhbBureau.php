@@ -2,9 +2,13 @@
 
 namespace App\Enums;
 
+// The 8 regional health bureaus (地方厚生局) that each independently
+// publish their own jurisdiction's insured medical institution list.
+//
+// The docblock below is published as the API docs' schema description.
+
 /**
- * The 8 regional health bureaus (地方厚生局) that each independently
- * publish their own jurisdiction's insured medical institution list.
+ * 施設の指定一覧を公開している地方厚生局。各局が管轄する都道府県の一覧を公開しています（中国四国厚生局は中国5県、四国厚生局は四国4県）。
  */
 enum RhbBureau: int
 {

@@ -23,6 +23,7 @@ class MedicalFacilityEventController extends Controller
      *
      * 毎月の公開データを比較して見つかった、施設の新規・廃止・変更を新しい順に返します。
      * `occurred_on` は変化が載った公開データの日付で、実際の開業日・廃止日ではありません。
+     * `facility` は施設の現在の情報で、変化の時点の情報ではありません。
      * 取込を始めた時点のデータ（初回取込）と、取り込み直しによる差分（再処理）は含みません。
      * 前回の確認以降に見つかった変化は、`detected_since` で取得してください。
      */
@@ -56,6 +57,8 @@ class MedicalFacilityEventController extends Controller
      *
      * 1つの施設の新規・廃止・変更を新しい順に返します。取込を始めた時点で掲載されていた施設は、
      * 最も古い記録が `origin` = 初回取込 の「新規」になります（開業日ではありません）。
+     *
+     * @param  MedicalFacility  $medicalFacility  施設のID（施設一覧の `id`）
      */
     public function facility(MedicalFacility $medicalFacility): AnonymousResourceCollection
     {
