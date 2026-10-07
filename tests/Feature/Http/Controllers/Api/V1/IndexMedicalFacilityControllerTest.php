@@ -13,7 +13,9 @@ use App\Models\MedicalFacilityOpeningPeriod;
 use App\Models\Municipality;
 use App\Models\PublicHoliday;
 use App\Services\MedicalInfoNet\OpeningPeriods;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -788,6 +790,25 @@ class IndexMedicalFacilityControllerTest extends TestCase
         // Closing time itself is closed; an offset is honored (08:00Z is 17:00 in Japan).
         $this->assertSame([], $this->getJson('/api/v1/medical-facilities?open_at=2026-10-05T12:00')->json('data'));
         $this->assertSame([$evening->id], $this->getJson('/api/v1/medical-facilities?open_at='.urlencode('2026-10-05T08:00:00Z'))->json('data.*.id'));
+    }
+
+    public function test_open_at_fetches_a_page_facility_by_facility_but_counts_them_together(): void
+    {
+        $open = $this->openOn(1, '09:00:00', '12:00:00');
+        $queries = [];
+        DB::listen(function (QueryExecuted $query) use (&$queries): void {
+            if (str_contains($query->sql, 'medical_facility_opening_periods')) {
+                $queries[] = $query->sql;
+            }
+        });
+
+        $response = $this->getJson('/api/v1/medical-facilities?open_at=2026-10-05T10:30');
+
+        $response->assertJsonPath('meta.total', 1);
+        $response->assertJsonPath('data.0.id', $open->id);
+        $this->assertCount(2, $queries);
+        $this->assertStringNotContainsString('NO_SEMIJOIN', $queries[0]);
+        $this->assertStringContainsString('NO_SEMIJOIN', $queries[1]);
     }
 
     public function test_open_at_uses_the_holiday_hours_on_a_public_holiday(): void

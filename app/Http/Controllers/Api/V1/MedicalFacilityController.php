@@ -42,28 +42,7 @@ class MedicalFacilityController extends Controller
     public function index(MedicalFacilityIndexRequest $request): AnonymousResourceCollection
     {
         $filters = $request->validated();
-
-        $facilities = $this->applyFilters(MedicalFacility::query(), $filters)
-            ->when($filters['q'] ?? null, fn ($query, $term) => $this->applySearch($query, $term))
-            ->when($filters['open_at'] ?? null, fn ($query, $value) => $this->applyOpenAt($query, (string) $value))
-            ->when(isset($filters['latitude'], $filters['longitude']), fn ($query) => $this->applyNearby(
-                $query,
-                (float) $filters['latitude'],
-                (float) $filters['longitude'],
-                (int) ($filters['radius'] ?? self::DEFAULT_RADIUS),
-                orderByDistance: ! isset($filters['sort']),
-            ))
-            ->when(
-                $filters['sort'] ?? null,
-                fn ($query, $sort) => match ($sort) {
-                    'designated_on' => $query->orderBy('designated_on'),
-                    '-designated_on' => $query->orderByDesc('designated_on'),
-                    'updated_at' => $query->orderBy('updated_at'),
-                    '-updated_at' => $query->orderByDesc('updated_at'),
-                    default => $query,
-                },
-            )
-            ->orderBy('id');
+        $facilities = $this->facilities($filters, forCounting: false);
 
         // withQueryString(): the links.next a client follows must carry the
         // same filters (and, for a cursor, pagination=cursor itself).
@@ -73,10 +52,11 @@ class MedicalFacilityController extends Controller
         }
 
         $totalCap = $request->totalCap();
-        $paginator = $facilities->paginate(
-            $request->perPage(),
-            total: $totalCap === null ? null : fn (): int => $this->countUpTo($facilities, $totalCap),
-        );
+        $paginator = $facilities->paginate($request->perPage(), total: function () use ($filters, $totalCap): int {
+            $counted = $this->facilities($filters, forCounting: true);
+
+            return $totalCap === null ? $counted->toBase()->getCountForPagination() : $this->countUpTo($counted, $totalCap);
+        });
 
         return MedicalFacilityResource::collection($paginator->withQueryString())
             ->additional(['meta' => [
@@ -98,22 +78,62 @@ class MedicalFacilityController extends Controller
     }
 
     /**
+     * The facilities matching the list's filters, in the requested order.
+     * Counting them and fetching a page of them can call for different
+     * query plans; see applyOpenAt().
+     *
+     * @param  array<string, mixed>  $filters
+     * @return Builder<MedicalFacility>
+     */
+    private function facilities(array $filters, bool $forCounting): Builder
+    {
+        return $this->applyFilters(MedicalFacility::query(), $filters)
+            ->when($filters['q'] ?? null, fn ($query, $term) => $this->applySearch($query, $term))
+            ->when($filters['open_at'] ?? null, fn ($query, $value) => $this->applyOpenAt($query, (string) $value, $forCounting))
+            ->when(isset($filters['latitude'], $filters['longitude']), fn ($query) => $this->applyNearby(
+                $query,
+                (float) $filters['latitude'],
+                (float) $filters['longitude'],
+                (int) ($filters['radius'] ?? self::DEFAULT_RADIUS),
+                orderByDistance: ! isset($filters['sort']),
+            ))
+            ->when(
+                $filters['sort'] ?? null,
+                fn ($query, $sort) => match ($sort) {
+                    'designated_on' => $query->orderBy('designated_on'),
+                    '-designated_on' => $query->orderByDesc('designated_on'),
+                    'updated_at' => $query->orderBy('updated_at'),
+                    '-updated_at' => $query->orderByDesc('updated_at'),
+                    default => $query,
+                },
+            )
+            ->orderBy('id');
+    }
+
+    /**
      * Facilities open at the given time in Japan (a time without an offset
      * is read as Japan's): one of their opening periods covers it, on that
      * weekday or, on a public holiday, on the holiday ranges, and in that
      * week of the month.
      *
+     * Fetching a page checks the facilities in order and stops once the
+     * page is full (NO_SEMIJOIN). Left to itself, MySQL first collects
+     * every facility open then (over 150,000 nationwide) and sorts them,
+     * which took ~0.6s in production for any page. Counting visits far
+     * more of them than a page does, and there collecting them first is
+     * the faster way (~0.07s vs ~0.7s locally for all), so it gets no hint.
+     *
      * @param  Builder<MedicalFacility>  $query
      * @return Builder<MedicalFacility>
      */
-    private function applyOpenAt(Builder $query, string $value): Builder
+    private function applyOpenAt(Builder $query, string $value, bool $forCounting): Builder
     {
         $at = Carbon::parse($value, 'Asia/Tokyo')->setTimezone('Asia/Tokyo');
         $day = PublicHoliday::isHoliday($at) ? OpeningPeriods::HOLIDAY : $at->isoWeekday();
         $time = $at->format('H:i:s');
 
         return $query->whereExists(fn ($periods) => $periods
-            ->selectRaw('1')
+            ->selectRaw($forCounting ? '1' : '/*+ NO_SEMIJOIN() */ 1')
             ->from('medical_facility_opening_periods')
             ->whereColumn('medical_facility_opening_periods.medical_facility_id', 'medical_facilities.id')
             ->where('day', $day)
