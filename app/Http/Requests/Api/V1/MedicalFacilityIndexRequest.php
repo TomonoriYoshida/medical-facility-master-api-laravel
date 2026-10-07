@@ -150,12 +150,28 @@ class MedicalFacilityIndexRequest extends FormRequest
 
             /** カーソル方式の次のページの位置（`meta.next_cursor` の値） */
             'cursor' => ['sometimes', 'string', 'max:1000'],
+
+            /**
+             * `capped` にすると、件数（`meta.total`）を最初の1万件を超えた時点で数え終えて速く返す。
+             * 超えたときは `meta.total_is_capped` が true で、`meta.total` は 10,001（実際の件数はそれ以上）。
+             * ページ番号で移動できる範囲（`meta.max_page`）は変わらない。件数を「1万件以上」と表示できる画面向け
+             */
+            'total' => ['sometimes', Rule::in(['capped'])],
         ];
     }
 
     public function usesCursor(): bool
     {
         return $this->validated('pagination') === 'cursor';
+    }
+
+    /**
+     * The row count at which counting stops, one past the rows page numbers
+     * reach, or null to count every row.
+     */
+    public function totalCap(): ?int
+    {
+        return $this->validated('total') === 'capped' ? config()->integer('api.max_paginated_rows') + 1 : null;
     }
 
     /**

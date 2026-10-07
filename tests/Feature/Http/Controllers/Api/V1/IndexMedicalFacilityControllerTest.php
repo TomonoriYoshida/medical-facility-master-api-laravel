@@ -653,6 +653,67 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $this->getJson('/api/v1/medical-facilities?page=2&per_page=10')->assertUnprocessable();
     }
 
+    public function test_capped_total_stops_counting_past_the_page_limit(): void
+    {
+        config(['api.max_paginated_rows' => 10]);
+        MedicalFacility::factory()->count(15)->create();
+
+        $response = $this->getJson('/api/v1/medical-facilities?total=capped&per_page=5&page=2');
+
+        $response->assertOk();
+        $response->assertJsonCount(5, 'data');
+        $response->assertJsonPath('meta.total', 11);
+        $response->assertJsonPath('meta.total_is_capped', true);
+        $response->assertJsonPath('meta.last_page', 3);
+        $response->assertJsonPath('meta.max_page', 2);
+        $response->assertJsonPath('links.next', null);
+    }
+
+    public function test_capped_total_is_exact_within_the_page_limit(): void
+    {
+        config(['api.max_paginated_rows' => 10]);
+        MedicalFacility::factory()->count(10)->create();
+
+        $response = $this->getJson('/api/v1/medical-facilities?total=capped&per_page=5');
+
+        $response->assertOk();
+        $response->assertJsonPath('meta.total', 10);
+        $response->assertJsonPath('meta.total_is_capped', false);
+    }
+
+    public function test_total_is_exact_unless_capped_is_asked_for(): void
+    {
+        config(['api.max_paginated_rows' => 10]);
+        MedicalFacility::factory()->count(15)->create();
+
+        $response = $this->getJson('/api/v1/medical-facilities?per_page=5');
+
+        $response->assertOk();
+        $response->assertJsonPath('meta.total', 15);
+        $response->assertJsonPath('meta.total_is_capped', false);
+    }
+
+    public function test_capped_total_counts_a_nearby_search(): void
+    {
+        config(['api.max_paginated_rows' => 2]);
+        MedicalFacility::factory()->count(4)->create(['latitude' => 43.0621, 'longitude' => 141.3544]);
+        MedicalFacility::factory()->create(['latitude' => 35.6812, 'longitude' => 139.7671]);
+
+        $response = $this->getJson('/api/v1/medical-facilities?total=capped&per_page=1&latitude=43.0621&longitude=141.3544');
+
+        $response->assertOk();
+        $response->assertJsonPath('meta.total', 3);
+        $response->assertJsonPath('meta.total_is_capped', true);
+        $response->assertJsonPath('data.0.distance', 0);
+    }
+
+    public function test_returns_422_for_an_unknown_total_mode(): void
+    {
+        $this->getJson('/api/v1/medical-facilities?total=exact')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['total']);
+    }
+
     public function test_cursor_pagination_walks_every_facility_even_when_many_share_an_update_time(): void
     {
         config(['api.max_paginated_rows' => 2]);
