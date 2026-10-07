@@ -22,6 +22,8 @@ class MedicalFacilityOpeningHoursController extends Controller
      * `schedules` は同じ診療時間の診療科をまとめたもので、`slots` は時間帯（午前・午後など）ごとの曜日別の時刻です（`day` の `holiday` は祝日）。
      * 時刻は公開データのまま `HH:MM` で返し、終了が開始より早いもの（夜間など）もそのままです。薬局は `departments` が空で、受付時間はありません。
      * `closures` は定休日で、`weekly` が毎週の休み、`monthly` が「第2水曜」のような決まった週の休み、`holidays` が祝日に休むか、`other` がその他（自由記述）です。
+     *
+     * @param  MedicalFacility  $medicalFacility  施設のID（施設一覧の `id`）
      */
     public function __invoke(MedicalFacility $medicalFacility): JsonResponse
     {

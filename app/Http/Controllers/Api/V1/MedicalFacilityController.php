@@ -70,6 +70,8 @@ class MedicalFacilityController extends Controller
      * 施設詳細
      *
      * idを指定して医療施設マスタの1件を返します。
+     *
+     * @param  MedicalFacility  $medicalFacility  施設のID（施設一覧の `id`）
      */
     public function show(MedicalFacility $medicalFacility): MedicalFacilityResource
     {

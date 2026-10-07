@@ -2,18 +2,22 @@
 
 namespace App\Enums;
 
+// Coarse "which specialty family" classification for a facility's
+// standing 診療科目 (departments), derived from Japan's officially
+// permitted 標榜診療科名 base categories (医療法施行規則). The source data
+// allows open-ended qualifier+base-category combination naming (e.g.
+// "糖尿病・脂質代謝内科" = a qualifier + 内科), so exact department-name
+// fidelity is not attempted here -- only which of these ~26 base
+// categories a department name matches, via marker/substring matching in
+// DepartmentCategoryClassifier. This provisional case list is derived from
+// real-data research (recovers 96.3% of observed department-token
+// occurrences); it may be adjusted once Phase A-2's Hokkaido spike
+// confirms the final observed vocabulary.
+//
+// The docblock below is published as the API docs' schema description.
+
 /**
- * Coarse "which specialty family" classification for a facility's
- * standing 診療科目 (departments), derived from Japan's officially
- * permitted 標榜診療科名 base categories (医療法施行規則). The source data
- * allows open-ended qualifier+base-category combination naming (e.g.
- * "糖尿病・脂質代謝内科" = a qualifier + 内科), so exact department-name
- * fidelity is not attempted here -- only which of these ~26 base
- * categories a department name matches, via marker/substring matching in
- * DepartmentCategoryClassifier. This provisional case list is derived from
- * real-data research (recovers 96.3% of observed department-token
- * occurrences); it may be adjusted once Phase A-2's Hokkaido spike
- * confirms the final observed vocabulary.
+ * 診療科目の大分類。元データの診療科目（例: 糖尿病・脂質代謝内科）を、医療法施行規則の診療科名の基本の分類にまとめたものです。1つの施設に複数の大分類が付きます。
  */
 enum DepartmentBaseCategory: int
 {

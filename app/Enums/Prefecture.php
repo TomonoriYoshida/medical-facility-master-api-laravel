@@ -2,9 +2,13 @@
 
 namespace App\Enums;
 
+// The 47 prefectures by JIS X 0401 code, the form prefecture_code is
+// stored and filtered in.
+//
+// The docblock below is published as the API docs' schema description.
+
 /**
- * The 47 prefectures by JIS X 0401 code, the form prefecture_code is stored
- * and filtered in.
+ * 都道府県コード（JIS X 0401の2桁）
  */
 enum Prefecture: string
 {

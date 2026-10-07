@@ -2,6 +2,9 @@
 
 namespace App\Enums;
 
+/**
+ * 保険医療機関・保険薬局としての指定状態。公開データに載らなくなった施設は「廃止」になります。
+ */
 enum MedicalFacilityStatus: int
 {
     case Active = 1;

@@ -19,11 +19,14 @@ trait ProvidesAttribution
     private function attribution(): array
     {
         return [
+            // 出典の表示。データを利用・再配布するときは、この文と各出典を表示する。
             'notice' => '本APIのデータは、各地方厚生局が公開する「保険医療機関・保険薬局の指定一覧」を加工して作成しています。',
+            // 利用条件（加工したデータも同じ条件で提供する）。
             'license' => [
                 'name' => '公共データ利用規約（第1.0版）',
                 'url' => 'https://www.digital.go.jp/resources/open_data/public_data_license_v1.0',
             ],
+            // 免責事項。
             'disclaimer' => 'データの正確性・完全性は保証しません。最新かつ正確な情報は、各地方厚生局の公表資料を確認してください。',
             // 市区町村・座標の出典（デジタル庁 アドレス・ベース・レジストリ、CC BY 4.0）。
             'address_source' => [
@@ -45,7 +48,7 @@ trait ProvidesAttribution
                 'name' => '内閣府「国民の祝日について」の祝日一覧（CSV）を加工して作成',
                 'url' => 'https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html',
             ],
-            // The bureaus this installation actually draws from (RhbScope).
+            // 施設データの出典（このAPIが取り扱う地方厚生局と、その公開ページ）。
             'sources' => collect(app(RhbScope::class)->bureaus())
                 ->map(fn (array $bureau) => [
                     'bureau' => $bureau['label'],
