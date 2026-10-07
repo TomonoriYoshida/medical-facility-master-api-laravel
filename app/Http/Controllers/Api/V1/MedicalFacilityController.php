@@ -60,7 +60,17 @@ class MedicalFacilityController extends Controller
 
         return MedicalFacilityResource::collection($paginator->withQueryString())
             ->additional(['meta' => [
+                /**
+                 * ページ番号で取得できる最後のページ（最初の1万件まで）
+                 *
+                 * @example 400
+                 */
                 'max_page' => $request->maxPage(),
+                /**
+                 * `total=capped` で件数を数え終えたか。true なら `total` は 10,001 で、実際の件数はそれ以上
+                 *
+                 * @example false
+                 */
                 'total_is_capped' => $this->isCapped($paginator->total(), $totalCap),
                 'attribution' => $this->attribution(),
             ]]);

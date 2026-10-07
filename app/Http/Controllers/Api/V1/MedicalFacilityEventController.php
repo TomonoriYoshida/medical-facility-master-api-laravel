@@ -49,7 +49,15 @@ class MedicalFacilityEventController extends Controller
             ->withQueryString();
 
         return MedicalFacilityEventResource::collection($events)
-            ->additional(['meta' => ['max_page' => $request->maxPage(), 'attribution' => $this->attribution()]]);
+            ->additional(['meta' => [
+                /**
+                 * ページ番号で取得できる最後のページ（最初の1万件まで）
+                 *
+                 * @example 400
+                 */
+                'max_page' => $request->maxPage(),
+                'attribution' => $this->attribution(),
+            ]]);
     }
 
     /**
