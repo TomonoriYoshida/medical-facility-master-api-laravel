@@ -81,7 +81,7 @@ class MedicalFacilityController extends Controller
         return MedicalFacilityResource::collection($paginator->withQueryString())
             ->additional(['meta' => [
                 'max_page' => $request->maxPage(),
-                'total_is_capped' => $totalCap !== null && $paginator->total() >= $totalCap,
+                'total_is_capped' => $this->isCapped($paginator->total(), $totalCap),
                 'attribution' => $this->attribution(),
             ]]);
     }
@@ -183,6 +183,14 @@ class MedicalFacilityController extends Controller
         $rows = $query->clone()->reorder()->select($query->qualifyColumn('id'))->limit($limit);
 
         return DB::query()->fromSub($rows, 'counted_rows')->count();
+    }
+
+    /**
+     * Whether counting stopped at the cap, so the real total is larger.
+     */
+    private function isCapped(int $total, ?int $totalCap): bool
+    {
+        return $totalCap !== null && $total >= $totalCap;
     }
 
     /**
