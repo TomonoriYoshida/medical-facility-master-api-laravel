@@ -26,7 +26,14 @@ class PublicHolidayController extends Controller
         $to = $request->validated('to') ?? $today->copy()->addYear()->endOfYear()->toDateString();
 
         return response()->json([
-            /** @var list<array{date: string, name: string}> */
+            /**
+             * 期間内の祝日・休日（日付順）。`date` は日付（YYYY-MM-DD）、`name` は祝日の名前で、
+             * 振替休日と国民の休日は「休日」です
+             *
+             * @var list<array{date: string, name: string}>
+             *
+             * @example [{"date": "2026-09-21", "name": "敬老の日"}, {"date": "2026-09-22", "name": "休日"}, {"date": "2026-09-23", "name": "秋分の日"}]
+             */
             'data' => PublicHoliday::query()
                 ->whereBetween('date', [$from, $to])
                 ->orderBy('date')

@@ -52,9 +52,18 @@ class MedicalFacilityOpeningHoursController extends Controller
              * 医療情報ネットの公開時点
              *
              * @format date
+             *
+             * @example 2026-06-01
              */
             'published_on' => $location->published_on->toDateString(),
-            /** @var list<array{departments: list<string>, slots: list<array{number: int, days: list<array{day: 'mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun'|'holiday', opens: string|null, closes: string|null, reception_opens: string|null, reception_closes: string|null}>}>}> */
+            /**
+             * 診療時間。`departments` は同じ診療時間の診療科、`slots` は時間帯（`number` は医療情報ネットでの時間帯の番号）ごとの曜日別の時刻。
+             * `opens`・`closes` は診療時間、`reception_opens`・`reception_closes` は受付時間（`HH:MM`）
+             *
+             * @var list<array{departments: list<string>, slots: list<array{number: int, days: list<array{day: 'mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun'|'holiday', opens: string|null, closes: string|null, reception_opens: string|null, reception_closes: string|null}>}>}>
+             *
+             * @example [{"departments": ["内科"], "slots": [{"number": 1, "days": [{"day": "mon", "opens": "09:00", "closes": "17:00", "reception_opens": "09:00", "reception_closes": "16:30"}, {"day": "tue", "opens": "09:00", "closes": "17:00", "reception_opens": "09:00", "reception_closes": "16:30"}, {"day": "wed", "opens": "09:00", "closes": "17:00", "reception_opens": "09:00", "reception_closes": "16:30"}, {"day": "thu", "opens": "09:00", "closes": "17:00", "reception_opens": "09:00", "reception_closes": "16:30"}, {"day": "fri", "opens": "09:00", "closes": "17:00", "reception_opens": "09:00", "reception_closes": "16:30"}, {"day": "sat", "opens": "09:00", "closes": "12:30", "reception_opens": "09:00", "reception_closes": "12:00"}]}]}]
+             */
             'schedules' => array_map(fn (array $schedule): array => [
                 'departments' => $schedule['departments'],
                 'slots' => array_map(fn (array $slot): array => [
@@ -68,7 +77,14 @@ class MedicalFacilityOpeningHoursController extends Controller
                     ], $slot['days']),
                 ], $schedule['slots']),
             ], $location->schedule->schedules ?? []),
-            /** @var array{weekly: list<'mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun'>, monthly: list<array{week: int, day: 'mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun'}>, holidays: bool|null, other: string|null}|null */
+            /**
+             * 定休日。`weekly` は毎週の休み、`monthly` は決まった週の休み（`week` が2なら第2週）、
+             * `holidays` は祝日に休むか（記載がなければnull）、`other` はその他（自由記述）。定休日の記載がなければnull
+             *
+             * @var array{weekly: list<'mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun'>, monthly: list<array{week: int, day: 'mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun'}>, holidays: bool|null, other: string|null}|null
+             *
+             * @example {"weekly": ["sun"], "monthly": [{"week": 2, "day": "sat"}], "holidays": true, "other": "01月01日，01月02日，01月03日，01月04日，02月12日，12月29日，12月30日，12月31日"}
+             */
             'closures' => $closures === null ? null : [
                 'weekly' => $closures['weekly'],
                 'monthly' => array_map(fn (array $closure): array => ['week' => $closure['week'], 'day' => $closure['day']], $closures['monthly']),

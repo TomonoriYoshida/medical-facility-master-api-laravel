@@ -36,9 +36,34 @@ class ExportController extends Controller
 
         return response()->json([
             'data' => [
+                /**
+                 * ファイルを作った日時
+                 *
+                 * @var string
+                 *
+                 * @format date-time
+                 *
+                 * @example 2026-10-05T22:16:01.654097Z
+                 */
                 'generated_at' => $manifest['generated_at'],
-                /** ファイルに含まれる施設のうち、最も新しい `updated_at`。差分の同期の起点に使える */
+                /**
+                 * ファイルに含まれる施設のうち、最も新しい `updated_at`。差分の同期の起点に使える
+                 *
+                 * @var string
+                 *
+                 * @format date-time
+                 *
+                 * @example 2026-10-05T06:56:45.000000Z
+                 */
                 'data_updated_at' => $manifest['data_updated_at'],
+                /**
+                 * ファイルの一覧。`format` は `csv` か `jsonl`、`prefecture` は都道府県（全体のファイルは null）、
+                 * `records` は施設の数、`size` はバイト数、`sha256` はファイルのハッシュ値、`url` はダウンロードのURL
+                 *
+                 * @var list<array{name: string, format: 'csv'|'jsonl', prefecture: array{code: string, label: string}|null, records: int, size: int, sha256: string, url: string}>
+                 *
+                 * @example [{"name": "medical-facilities-01.csv.gz", "format": "csv", "prefecture": {"code": "01", "label": "北海道"}, "records": 8130, "size": 428199, "sha256": "e45239903993bda22a9bcbe4d5aabf64bc26cf436c06eea5583e054c90377934", "url": "https://168-110-42-30.sslip.io/api/v1/exports/medical-facilities-01.csv.gz"}, {"name": "medical-facilities-all.jsonl.gz", "format": "jsonl", "prefecture": null, "records": 224517, "size": 16248504, "sha256": "a0c6681a6d420e2dce225445426c087c68672bf02515b365fd0dec0c98d8ef01", "url": "https://168-110-42-30.sslip.io/api/v1/exports/medical-facilities-all.jsonl.gz"}]
+                 */
                 'files' => array_map(fn (array $file): array => [
                     ...$file,
                     'url' => route('api.v1.exports.show', ['filename' => $file['name']]),

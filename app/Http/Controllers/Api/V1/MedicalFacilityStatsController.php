@@ -76,19 +76,33 @@ class MedicalFacilityStatsController extends Controller
         return response()->json([
             /**
              * 集計結果。`key` は `month` なら `YYYY-MM`、`municipality` なら市区町村コード、
-             * `department_category` なら診療科目のコード
+             * `department_category` なら診療科目のコードで、`label` はその名前、`count` は施設の数です。
+             * `population` は市区町村の人口、`count_per_10k` は人口1万人あたりの施設の数で、`municipality` 以外では null
              *
              * @var list<array{key: int|string|null, label: string|null, count: int, population: int|null, count_per_10k: float|null}>
+             *
+             * @example [{"key": "13112", "label": "世田谷区", "count": 2193, "population": 928666, "count_per_10k": 23.61}, {"key": "13111", "label": "大田区", "count": 1546, "population": 745048, "count_per_10k": 20.75}, {"key": "13103", "label": "港区", "count": 1468, "population": 269877, "count_per_10k": 54.4}]
              */
             'data' => $result['groups'],
             'meta' => [
-                /** 絞り込んだ施設の数 */
+                /**
+                 * 絞り込んだ施設の数
+                 *
+                 * @example 31469
+                 */
                 'total' => (int) $result['total'],
+                /**
+                 * 指定した集計の単位
+                 *
+                 * @example municipality
+                 */
                 'group_by' => $grouping->value,
                 /**
                  * `population` の基準日（YYYY-MM-DD）。`municipality` 以外、または人口が未取込なら null
                  *
                  * @var string|null
+                 *
+                 * @example 2026-01-01
                  */
                 'population_as_of' => is_string($result['population_as_of']) ? $result['population_as_of'] : null,
                 'attribution' => $this->attribution(),

@@ -68,14 +68,26 @@ class MedicalFacilityEventStatsController extends Controller
 
         return response()->json([
             /**
-             * 集計結果。`key` は `month` なら `YYYY-MM`、`municipality` なら市区町村コード
+             * 集計結果。`key` は `month` なら `YYYY-MM`、`municipality` なら市区町村コードで、
+             * `label` はその名前、`count` は変化の数です
              *
              * @var list<array{key: string|null, label: string|null, count: int}>
+             *
+             * @example [{"key": "2026-08", "label": "2026年8月", "count": 0}, {"key": "2026-09", "label": "2026年9月", "count": 0}, {"key": "2026-10", "label": "2026年10月", "count": 483}]
              */
             'data' => $result['groups'],
             'meta' => [
-                /** 絞り込んだ変化の数 */
+                /**
+                 * 絞り込んだ変化の数
+                 *
+                 * @example 483
+                 */
                 'total' => (int) $result['total'],
+                /**
+                 * 指定した集計の単位
+                 *
+                 * @example month
+                 */
                 'group_by' => $grouping->value,
                 'attribution' => $this->attribution(),
             ],

@@ -105,6 +105,31 @@ class OpenApiDocumentTest extends TestCase
         $this->assertSame(['0114611'], $facility['properties']['facility_code']['examples']);
     }
 
+    public function test_export_files_have_their_item_shape(): void
+    {
+        $files = $this->document()['paths']['/v1/exports']['get']['responses']['200']['content']['application/json']['schema']['properties']['data']['properties']['files'];
+
+        $this->assertSame(['name', 'format', 'prefecture', 'records', 'size', 'sha256', 'url'], $files['items']['required']);
+        $this->assertSame(['csv', 'jsonl'], $files['items']['properties']['format']['enum']);
+        $this->assertSame(['object', 'null'], $files['items']['properties']['prefecture']['type']);
+    }
+
+    public function test_responses_written_in_the_controllers_have_examples(): void
+    {
+        $paths = $this->document()['paths'];
+        $data = fn (string $path): array => $paths[$path]['get']['responses']['200']['content']['application/json']['schema']['properties']['data'];
+
+        $this->assertNotEmpty($data('/v1/stats/facilities')['examples']);
+        $this->assertNotEmpty($data('/v1/stats/facility-events')['examples']);
+        $this->assertNotEmpty($data('/v1/holidays')['examples']);
+        $this->assertNotEmpty($data('/v1/exports')['properties']['files']['examples']);
+        $this->assertNotEmpty($data('/v1/medical-facilities/{medicalFacility}/opening-hours')['properties']['schedules']['examples']);
+
+        foreach ($data('/v1/options')['properties'] as $name => $list) {
+            $this->assertNotEmpty($list['examples'] ?? null, $name);
+        }
+    }
+
     public function test_scramble_descriptions_are_in_japanese(): void
     {
         $document = $this->document();
