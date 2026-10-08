@@ -130,6 +130,13 @@ class MedicalFacilityResource extends JsonResource
              */
             'distance' => $this->when($this->resource->getAttribute('distance') !== null, fn (): int => (int) round((float) $this->resource->getAttribute('distance'))),
             /**
+             * `open_at` の日時から受付が続く終わりの日時（日本時間）。日付をまたぐ受付は翌日の終わりまで。
+             * `open_at` を指定した検索のときだけ含まれる
+             *
+             * @example 2026-10-05T19:00:00+09:00
+             */
+            'open_until' => $this->when($this->resource->getAttribute('open_until') !== null, fn (): string => $this->resource->getAttribute('open_until')->toIso8601String()),
+            /**
              * 電話番号（区切りをハイフンに揃えたもの）
              *
              * @example 03-3262-3421

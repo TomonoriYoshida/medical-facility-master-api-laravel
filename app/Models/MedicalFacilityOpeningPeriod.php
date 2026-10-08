@@ -23,6 +23,19 @@ class MedicalFacilityOpeningPeriod extends Model
     public $timestamps = false;
 
     /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'day' => 'integer',
+            'weeks' => 'integer',
+        ];
+    }
+
+    /**
      * @return BelongsTo<MedicalFacility, $this>
      */
     public function medicalFacility(): BelongsTo

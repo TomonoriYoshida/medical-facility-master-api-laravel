@@ -797,7 +797,7 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $open = $this->openOn(1, '09:00:00', '12:00:00');
         $queries = [];
         DB::listen(function (QueryExecuted $query) use (&$queries): void {
-            if (str_contains($query->sql, 'medical_facility_opening_periods')) {
+            if (str_contains($query->sql, 'exists') && str_contains($query->sql, 'medical_facility_opening_periods')) {
                 $queries[] = $query->sql;
             }
         });
@@ -827,6 +827,54 @@ class IndexMedicalFacilityControllerTest extends TestCase
 
         $this->assertSame([$facility->id], $this->getJson('/api/v1/medical-facilities?open_at=2026-10-07T10:00')->json('data.*.id'));
         $this->assertSame([], $this->getJson('/api/v1/medical-facilities?open_at=2026-10-14T10:00')->json('data'));
+    }
+
+    public function test_open_at_returns_when_each_facility_closes(): void
+    {
+        $morning = $this->openOn(1, '09:00:00', '12:00:00');
+        MedicalFacilityOpeningPeriod::factory()->create(['medical_facility_id' => $morning->id, 'day' => 1, 'opens' => '15:00:00', 'closes' => '18:30:00']);
+
+        $this->getJson('/api/v1/medical-facilities?open_at=2026-10-05T10:30')
+            ->assertJsonPath('data.0.open_until', '2026-10-05T12:00:00+09:00');
+        $this->getJson('/api/v1/medical-facilities?open_at='.urlencode('2026-10-05T07:00:00Z'))
+            ->assertJsonPath('data.0.open_until', '2026-10-05T18:30:00+09:00');
+    }
+
+    public function test_open_until_follows_hours_past_midnight_into_the_next_day(): void
+    {
+        // Monday 18:00 to Tuesday 02:00, stored as two ranges.
+        $facility = $this->openOn(1, '18:00:00', '24:00:00');
+        MedicalFacilityOpeningPeriod::factory()->create(['medical_facility_id' => $facility->id, 'day' => 2, 'opens' => '00:00:00', 'closes' => '02:00:00']);
+        $allDay = $this->openOn(1, '00:00:00', '24:00:00');
+
+        $response = $this->getJson('/api/v1/medical-facilities?open_at=2026-10-05T20:00');
+
+        $response->assertJsonPath('data.0.id', $facility->id);
+        $response->assertJsonPath('data.0.open_until', '2026-10-06T02:00:00+09:00');
+        $response->assertJsonPath('data.1.id', $allDay->id);
+        $response->assertJsonPath('data.1.open_until', '2026-10-06T00:00:00+09:00');
+        $this->getJson('/api/v1/medical-facilities?open_at=2026-10-06T01:00')
+            ->assertJsonPath('data.0.open_until', '2026-10-06T02:00:00+09:00');
+    }
+
+    public function test_open_until_stops_at_midnight_when_the_next_day_is_a_holiday(): void
+    {
+        // 2026-10-12 (Monday) is a holiday, so the Monday range after midnight does not apply.
+        PublicHoliday::factory()->create(['date' => '2026-10-12', 'name' => 'スポーツの日']);
+        $facility = $this->openOn(7, '18:00:00', '24:00:00');
+        MedicalFacilityOpeningPeriod::factory()->create(['medical_facility_id' => $facility->id, 'day' => 1, 'opens' => '00:00:00', 'closes' => '02:00:00']);
+
+        $this->getJson('/api/v1/medical-facilities?open_at=2026-10-11T20:00')
+            ->assertJsonPath('data.0.open_until', '2026-10-12T00:00:00+09:00');
+    }
+
+    public function test_open_until_is_only_returned_with_open_at(): void
+    {
+        $this->openOn(1, '09:00:00', '12:00:00');
+
+        $this->assertArrayNotHasKey('open_until', $this->getJson('/api/v1/medical-facilities')->json('data.0'));
+        $this->getJson('/api/v1/medical-facilities?pagination=cursor&open_at=2026-10-05T10:30')
+            ->assertJsonPath('data.0.open_until', '2026-10-05T12:00:00+09:00');
     }
 
     public function test_returns_422_when_open_at_is_not_a_date_time(): void

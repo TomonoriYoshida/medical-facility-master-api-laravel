@@ -8,11 +8,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\MedicalFacilityIndexRequest;
 use App\Http\Resources\Api\V1\MedicalFacilityResource;
 use App\Models\MedicalFacility;
-use App\Models\PublicHoliday;
-use App\Services\MedicalInfoNet\OpeningPeriods;
+use App\Services\MedicalInfoNet\ClosingTimes;
+use App\Services\MedicalInfoNet\OpeningMoment;
 use App\Services\Text\AddressNormalizer;
 use App\Services\Text\ItaijiNormalizer;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -30,6 +31,7 @@ class MedicalFacilityController extends Controller
     public function __construct(
         private readonly ItaijiNormalizer $itaijiNormalizer,
         private readonly AddressNormalizer $addressNormalizer,
+        private readonly ClosingTimes $closingTimes,
     ) {}
 
     /**
@@ -37,26 +39,33 @@ class MedicalFacilityController extends Controller
      *
      * 医療施設マスタをページネーション付きで返します。`q` は施設名・住所の全角半角/異体字ゆれを
      * 吸収したあいまい検索です。`latitude`・`longitude` を指定すると、`radius` 以内の施設を近い順に返します。
-     * `open_at` を指定すると、その日時に受付中の施設（厚生労働省「医療情報ネット」の診療時間で判定）だけを返します。
+     * `open_at` を指定すると、その日時に受付中の施設（厚生労働省「医療情報ネット」の診療時間で判定）だけを返し、
+     * 各施設に受付が終わる日時 `open_until` を含めます。
      */
     public function index(MedicalFacilityIndexRequest $request): AnonymousResourceCollection
     {
         $filters = $request->validated();
-        $facilities = $this->facilities($filters, forCounting: false);
+        $openAt = isset($filters['open_at']) ? $this->openAt((string) $filters['open_at']) : null;
+        $facilities = $this->facilities($filters, $openAt, forCounting: false);
 
         // withQueryString(): the links.next a client follows must carry the
         // same filters (and, for a cursor, pagination=cursor itself).
         if ($request->usesCursor()) {
-            return MedicalFacilityResource::collection($facilities->cursorPaginate($request->perPage())->withQueryString())
+            $cursorPaginator = $facilities->cursorPaginate($request->perPage())->withQueryString();
+            $this->addClosingTimes($cursorPaginator->getCollection(), $openAt);
+
+            return MedicalFacilityResource::collection($cursorPaginator)
                 ->additional(['meta' => ['attribution' => $this->attribution()]]);
         }
 
         $totalCap = $request->totalCap();
-        $paginator = $facilities->paginate($request->perPage(), total: function () use ($filters, $totalCap): int {
-            $counted = $this->facilities($filters, forCounting: true);
+        $paginator = $facilities->paginate($request->perPage(), total: function () use ($filters, $openAt, $totalCap): int {
+            $counted = $this->facilities($filters, $openAt, forCounting: true);
 
             return $totalCap === null ? $counted->toBase()->getCountForPagination() : $this->countUpTo($counted, $totalCap);
         });
+
+        $this->addClosingTimes($paginator->getCollection(), $openAt);
 
         return MedicalFacilityResource::collection($paginator->withQueryString())
             ->additional(['meta' => [
@@ -97,11 +106,11 @@ class MedicalFacilityController extends Controller
      * @param  array<string, mixed>  $filters
      * @return Builder<MedicalFacility>
      */
-    private function facilities(array $filters, bool $forCounting): Builder
+    private function facilities(array $filters, ?Carbon $openAt, bool $forCounting): Builder
     {
         return $this->applyFilters(MedicalFacility::query(), $filters)
             ->when($filters['q'] ?? null, fn ($query, $term) => $this->applySearch($query, $term))
-            ->when($filters['open_at'] ?? null, fn ($query, $value) => $this->applyOpenAt($query, (string) $value, $forCounting))
+            ->when($openAt, fn ($query, Carbon $at) => $this->applyOpenAt($query, $at, $forCounting))
             ->when(isset($filters['latitude'], $filters['longitude']), fn ($query) => $this->applyNearby(
                 $query,
                 (float) $filters['latitude'],
@@ -123,8 +132,34 @@ class MedicalFacilityController extends Controller
     }
 
     /**
-     * Facilities open at the given time in Japan (a time without an offset
-     * is read as Japan's): one of their opening periods covers it, on that
+     * The `open_at` time in Japan; a time without an offset is read as Japan's.
+     */
+    private function openAt(string $value): Carbon
+    {
+        return Carbon::parse($value, 'Asia/Tokyo')->setTimezone('Asia/Tokyo');
+    }
+
+    /**
+     * Gives each facility on the page, open at $openAt, its closing time
+     * as `open_until`, looked up for the whole page at once.
+     *
+     * @param  Collection<int, MedicalFacility>  $facilities
+     */
+    private function addClosingTimes(Collection $facilities, ?Carbon $openAt): void
+    {
+        if ($openAt === null) {
+            return;
+        }
+
+        $closingTimes = $this->closingTimes->at($openAt, $facilities->pluck('id')->all());
+
+        foreach ($facilities as $facility) {
+            $facility->setAttribute('open_until', $closingTimes[$facility->id] ?? null);
+        }
+    }
+
+    /**
+     * Facilities open at the given time in Japan: one of their opening periods covers it, on that
      * weekday or, on a public holiday, on the holiday ranges, and in that
      * week of the month.
      *
@@ -138,20 +173,18 @@ class MedicalFacilityController extends Controller
      * @param  Builder<MedicalFacility>  $query
      * @return Builder<MedicalFacility>
      */
-    private function applyOpenAt(Builder $query, string $value, bool $forCounting): Builder
+    private function applyOpenAt(Builder $query, Carbon $at, bool $forCounting): Builder
     {
-        $at = Carbon::parse($value, 'Asia/Tokyo')->setTimezone('Asia/Tokyo');
-        $day = PublicHoliday::isHoliday($at) ? OpeningPeriods::HOLIDAY : $at->isoWeekday();
-        $time = $at->format('H:i:s');
+        $moment = OpeningMoment::at($at);
 
         return $query->whereExists(fn ($periods) => $periods
             ->selectRaw($forCounting ? '1' : '/*+ NO_SEMIJOIN() */ 1')
             ->from('medical_facility_opening_periods')
             ->whereColumn('medical_facility_opening_periods.medical_facility_id', 'medical_facilities.id')
-            ->where('day', $day)
-            ->where('opens', '<=', $time)
-            ->where('closes', '>', $time)
-            ->whereRaw('weeks & ? <> 0', [1 << intdiv($at->day - 1, 7)]));
+            ->where('day', $moment->day)
+            ->where('opens', '<=', $moment->time)
+            ->where('closes', '>', $moment->time)
+            ->whereRaw('weeks & ? <> 0', [$moment->weekBit]));
     }
 
     /**
