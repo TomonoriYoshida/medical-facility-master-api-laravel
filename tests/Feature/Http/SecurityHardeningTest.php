@@ -59,6 +59,22 @@ class SecurityHardeningTest extends TestCase
         $response->assertHeaderMissing('Strict-Transport-Security');
     }
 
+    public function test_responses_do_not_advertise_the_php_version(): void
+    {
+        $this->getJson('/api/v1/options')->assertHeaderMissing('X-Powered-By');
+        $this->get('/docs/api')->assertHeaderMissing('X-Powered-By');
+    }
+
+    public function test_html_docs_carry_a_content_security_policy_but_json_does_not(): void
+    {
+        $docs = $this->get('/docs/api');
+        $docs->assertOk();
+        $this->assertStringContainsString("default-src 'self'", (string) $docs->headers->get('Content-Security-Policy'));
+        $this->assertStringContainsString("frame-ancestors 'none'", (string) $docs->headers->get('Content-Security-Policy'));
+
+        $this->getJson('/api/v1/options')->assertHeaderMissing('Content-Security-Policy');
+    }
+
     public function test_hsts_is_sent_only_over_https(): void
     {
         $response = $this->getJson('https://localhost/api/v1/options');
