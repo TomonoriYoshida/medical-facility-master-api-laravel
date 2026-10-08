@@ -34,6 +34,41 @@ class BedAndDepartmentParserTest extends TestCase
         $this->assertSame(['療養' => 206, '一般' => 231], $result['bedCounts']);
     }
 
+    public function test_a_label_glued_to_its_number_by_half_width_spaces_keeps_no_spaces(): void
+    {
+        // Real data (関東信越・東北 and others): a label line "一般　　" and
+        // then "　　一般 317", where the half-width space keeps the label
+        // and its number in one token.
+        $rows = [
+            $this->row(i: "一般\u{3000}\u{3000}"),
+            $this->row(i: "\u{3000}\u{3000}一般 317"),
+            $this->row(i: "\u{3000}\u{3000}感染      4"),
+        ];
+
+        $result = (new BedAndDepartmentParser)->parse($rows);
+
+        $this->assertSame(['一般' => 317, '感染' => 4], $result['bedCounts']);
+    }
+
+    public function test_beds_listed_on_several_lines_under_one_type_are_added_up(): void
+    {
+        // Real data: a type listed once per ward, either as label lines
+        // (群馬県済生会前橋病院: 一般 317 and 6) or as label+number lines
+        // (三沢市立三沢病院: 一般 50, 38, ...).
+        $rows = [
+            $this->row(i: "一般\u{3000}\u{3000}"),
+            $this->row(i: "\u{3000}\u{3000}一般 317"),
+            $this->row(i: "一般\u{3000}\u{3000}"),
+            $this->row(i: "\u{3000}\u{3000}一般 6"),
+            $this->row(i: "療養\u{3000}\u{3000} 51"),
+            $this->row(i: "療養\u{3000}\u{3000} 17"),
+        ];
+
+        $result = (new BedAndDepartmentParser)->parse($rows);
+
+        $this->assertSame(['一般' => 323, '療養' => 68], $result['bedCounts']);
+    }
+
     public function test_a_department_token_line_has_no_digits_and_is_collected_as_is(): void
     {
         $rows = [
