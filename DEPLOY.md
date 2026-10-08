@@ -229,6 +229,16 @@ docker compose run --rm app php artisan facilities:assign-opening-hours --force
 - `rhb:import --force` は、外字を含む施設（名前約360件・住所約60件、個人名を含めると約4,500件）を「再処理」の変更として記録し、`updated_at` を動かします。一括ダウンロードは翌朝の `rhb:export` で作り直されます。
 - 照合用キーの作り方を変えた版では、`medical-info-net:import --force` で医療情報ネット側のキーを作り直し、`facilities:assign-opening-hours --force` で照合し直します。
 
+### 病床数の読み取りの修正（初回）
+
+病床数の読み取りを直した版へ初めて更新したときは、`migrate` の後に次を実行します。全国で20分ほどかかるため、朝の定期実行（05:00〜07:15）を避けます。
+
+```bash
+docker compose run --rm app php artisan rhb:import --force --wait
+```
+
+- 病床の種別に空白が入っていた施設（`"一般    "` など、約2,200件）と、病棟ごとに分けて載っている病床を最後の1行しか数えていなかった施設（約70件）の `bed_counts` が直ります。ローカルでは2,294件が「再処理」の変更として記録され、`updated_at` が動きました。一括ダウンロードは翌朝の `rhb:export` で作り直されます。
+
 ## 4. バックアップ
 
 `medical_facility_events`（開業・廃止などの変更履歴）は、取込を重ねて記録していくデータです。各局の公開データから作り直せないので、定期的にバックアップします。

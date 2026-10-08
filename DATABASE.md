@@ -51,7 +51,7 @@ medical_info_net_locations (1) ── (0..1) medical_info_net_schedules   ※ so
 | `administrator_name` | string | ✓ | 管理者名（常に個人名）。**APIでは返さない** |
 | `designated_on` | date | ✓ | 指定年月日（最初の指定日） |
 | `designation_history` | json, nullable | ✓ | 指定年月日欄に埋め込まれた履歴（`{reason, date}` の配列。`reason` は新規／組織変更／交代等の登録理由、`date` は現在の指定期間の開始日と見られる）。約1割の施設は登録理由の記載がなく、`reason` が null になる。**`medical_facility_events`には流し込まない**——events テーブルは「自分（インポーター）が今回の同期で検知した変化」を意味する追記専用ログであり、この履歴はインポート開始以前から存在する情報のため意味が異なる。単なるマップ済み属性として通常の差分検出（`AttributeDiff`）の対象にする |
-| `bed_counts` | json, nullable | ✓ | 病床種別（療養／一般／精神等）→ 病床数のラベル付き辞書。薬局は常にnull |
+| `bed_counts` | json, nullable | ✓ | 病床種別（療養／一般／精神等）→ 病床数のラベル付き辞書。元データが病棟ごとに分けて載せている同じ種別の病床は合計する。薬局は常にnull |
 | `department_categories` | json, nullable | ✓ | `App\Enums\DepartmentBaseCategory`値の配列（`AsEnumCollection`キャスト）。医科・歯科のみ、薬局は常に空配列。原本の診療科目欄は「基本診療科名＋自由な修飾語」の組み合わせ命名が医療法施行規則で公式に許容されており事実上自由記述に近いため、修飾語を含む完全一致ではなく「大分類（内科系・外科系など）のどれに該当するか」というマーカーマッチによる粗い分類に留めている（実データ検証で出現件数の96.3%を分類可能と確認済み。完全一致の復元は制度上原理的に不可能）。歯科の一覧の施設は、歯科の指定で標榜できるのが歯科系（歯科・小児歯科・矯正歯科・歯科口腔外科）だけのため、診療科目欄があれば常に`歯科`のみとする（略記「小歯」などを1文字の「小」→小児科のように誤分類しないため） |
 | `created_at` / `updated_at` | datetime | - | `updated_at`は施設データ（マップ済み属性）が実際に変わった時と、`facilities:geocode`で座標（`latitude`/`longitude`/`geocode_level`）が変わった時だけ更新される。座標を含めるのは、差分同期（`updated_since`）の利用者と一括ダウンロード（`rhb:export`）が座標の追加・変更を拾えるようにするため。取込のたびに行う`last_seen_rhb_dataset_download_id`の更新や、`facilities:renormalize`・`facilities:assign-municipalities`による派生カラムの再計算では変わらない（APIでも「施設情報の最終更新日時」として返しているため） |
 

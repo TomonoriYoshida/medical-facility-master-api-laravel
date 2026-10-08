@@ -15,6 +15,14 @@ namespace App\Services\Rhb\Import;
  * separate adjacent tokens (e.g. "療養　　 206" -> ["療養", "206"], not
  * ["療養206"], verified against real data), so a digit-only token is
  * paired with the label token immediately preceding it.
+ *
+ * Some bureaus instead write a label line ("一般　　") followed by
+ * "　　一般 317", where a half-width space keeps the label and its number
+ * in one token; the label is taken without those spaces.
+ *
+ * A facility can list one bed type on several lines, one per ward (三沢市立
+ * 三沢病院: 一般 50, 38, 32, 51 and 27), so counts under the same label are
+ * added up. Keeping only the last line undercounted ~70 hospitals.
  */
 final class BedAndDepartmentParser
 {
@@ -49,15 +57,15 @@ final class BedAndDepartmentParser
                 foreach ($tokens as $token) {
                     if (preg_match('/^\d+$/u', $token)) {
                         if ($pendingLabel !== null) {
-                            $bedCounts[$pendingLabel] = (int) $token;
+                            $bedCounts[$pendingLabel] = ($bedCounts[$pendingLabel] ?? 0) + (int) $token;
                             $pendingLabel = null;
                         }
 
                         continue;
                     }
 
-                    if (preg_match('/^(\D+?)(\d+)$/u', $token, $matches)) {
-                        $bedCounts[$matches[1]] = (int) $matches[2];
+                    if (preg_match('/^(\D+?)\s*(\d+)$/u', $token, $matches)) {
+                        $bedCounts[$matches[1]] = ($bedCounts[$matches[1]] ?? 0) + (int) $matches[2];
                         $pendingLabel = null;
 
                         continue;
