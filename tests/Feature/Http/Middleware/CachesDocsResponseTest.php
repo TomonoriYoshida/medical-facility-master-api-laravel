@@ -76,6 +76,18 @@ class CachesDocsResponseTest extends TestCase
         $this->assertTrue(Cache::store('array')->has($this->key('docs/api.json')));
     }
 
+    public function test_the_warm_command_points_try_it_at_the_app_url(): void
+    {
+        config(['app.url' => 'https://api.example.test/']);
+        $this->cacheRoutes();
+
+        $this->artisan('docs:warm')->assertExitCode(0);
+
+        /** @var array{content: string, type: string} $cached */
+        $cached = Cache::store('array')->get($this->key('docs/api.json'));
+        $this->assertSame([['url' => 'https://api.example.test/api']], json_decode($cached['content'], true)['servers']);
+    }
+
     /**
      * A stand-in route cache file: only its time is read here, the routes
      * themselves were registered at boot. The application remembers at
