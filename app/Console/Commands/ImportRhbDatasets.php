@@ -15,9 +15,9 @@ use Illuminate\Support\Facades\Bus;
  * Dispatches the queued import pipeline (ImportRhbFacilityListJob) for the
  * latest downloaded regional health bureau (地方厚生局) datasets.
  * Fire-and-forget by default: this only enqueues work onto
- * QUEUE_CONNECTION, a separately-running worker (`sail artisan
- * queue:work`, or the queue:listen process `sail composer run dev`
- * already starts) performs the actual import.
+ * QUEUE_CONNECTION, a separately-running worker performs the actual
+ * import (the `worker` container in production, the `queue` service or
+ * `sail composer run dev` locally).
  *
  * Unlike the old MHLW pipeline's facility/speciality job pairs, there is
  * no chain/ordering dependency between jobs here -- every (bureau,
@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\Bus;
  */
 #[Signature('rhb:import
     {--bureau=* : 対象の局キーを絞り込む（config/rhb.phpのキー、指定なしは対象範囲内の全局、繰り返し指定可）}
-    {--wait : バッチが完了するまで待機し、結果を表示する（ローカル動作確認用）}
+    {--wait : バッチが完了するまで待機し、結果を表示する}
     {--force : 取込済みのダウンロードも再取込する（パーサー・正規化処理の変更後など）}')]
 #[Description('Import the latest downloaded regional health bureau (地方厚生局) datasets into medical_facilities')]
 class ImportRhbDatasets extends Command
@@ -76,7 +76,7 @@ class ImportRhbDatasets extends Command
             ->allowFailures()
             ->dispatch();
 
-        $this->components->info("インポートをキューに投入しました (batch ID: {$batch->id})。キューワーカー（`sail artisan queue:work` または `sail composer run dev`）が処理します。");
+        $this->components->info("取込をキューに投入しました（batch ID: {$batch->id}）。キューワーカーが処理します。");
 
         if (! $this->option('wait')) {
             return Command::SUCCESS;
