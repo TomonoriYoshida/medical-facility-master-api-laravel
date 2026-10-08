@@ -45,6 +45,35 @@ services:
                     }
                     format json
                 }
+                # The everyday-use site (open-clinic-finder), a static
+                # export built on this server, is served at / ahead of
+                # Laravel. Paths it has no file for (and /api, /docs, /up)
+                # fall through to php_server as before.
+                @frontend {
+                    not path /api/* /docs/* /up
+                    file {
+                        root /srv/open-clinic-finder/out
+                        try_files {path}/index.html {path}
+                    }
+                }
+                handle @frontend {
+                    root * /srv/open-clinic-finder/out
+                    try_files {path}/index.html {path}
+                    header {
+                        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cyberjapandata.gsi.go.jp; connect-src 'self' https://msearch.gsi.go.jp; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+                        X-Content-Type-Options nosniff
+                        Referrer-Policy strict-origin-when-cross-origin
+                        Permissions-Policy "geolocation=(self), camera=(), microphone=()"
+                        Strict-Transport-Security max-age=31536000
+                    }
+                    # Hashed file names: a new build never reuses one. Pages
+                    # and the rest are checked on every visit.
+                    @hashed path /_next/static/*
+                    @unhashed not path /_next/static/*
+                    header @hashed Cache-Control "public, max-age=31536000, immutable"
+                    header @unhashed Cache-Control "no-cache"
+                    file_server
+                }
         ports:
             - '80:80'
             - '443:443'
@@ -54,6 +83,9 @@ services:
             - 'storage-logs:/app/storage/logs'
             - 'caddy-data:/data/caddy'
             - 'caddy-config:/config/caddy'
+            # The whole checkout, not out/: a build replaces out/, and a
+            # bind mount of it would keep pointing at the removed directory.
+            - '${FRONTEND_DIR:-../open-clinic-finder}:/srv/open-clinic-finder:ro'
 
     worker:
         <<: *app

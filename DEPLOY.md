@@ -8,6 +8,7 @@
 ```
                     ┌──────────────── サーバー（Docker Compose） ────────────────┐
 インターネット ──▶  │ app        FrankenPHP（Caddy 内蔵）: HTTPS 終端 + API       │
+                    │            + 一般向けサイト（/ の静的ファイル）             │
   :80 / :443        │ worker     queue:work（取込ジョブの実行）                   │
                     │ scheduler  schedule:work（毎日の取得・取込・状態確認）      │
                     │ mysql      MySQL 8.4（外部には非公開）                      │
@@ -149,6 +150,27 @@ curl "https://203-0-113-1.sslip.io/api/v1/medical-facilities?per_page=1"
 1. フロントエンドのリポジトリの Settings → Secrets and variables → Actions → Variables で、リポジトリ変数 `API_ORIGIN` に `https://<SERVER_NAME>` を設定します（末尾の `/` と `/api` は付けない）。
 2. 変数を変えただけではデプロイされないため、Actions の「Deploy to GitHub Pages」を「Run workflow」で実行します。
 3. 公開されたサイトで検索できることを確認します。API は CORS ですべてのオリジンを許可しているため（`config/cors.php`）、API 側の設定は不要です。
+
+### 一般向けサイト（/）
+
+[open-clinic-finder](https://github.com/TomonoriYoshida/open-clinic-finder)（いま開いてる病院・薬局）は、このサーバーでビルドし、app コンテナの Caddy が `/` で配信します。
+Caddy は API のリポジトリの隣（`../open-clinic-finder`、`.env` の `FRONTEND_DIR` で変更可）の `out/` を読み取り専用で参照し、ファイルのないパスと `/api`・`/docs`・`/up` は従来どおり Laravel に渡します。
+ビルドしていないあいだは、`/` は従来どおり API 仕様書へ転送されます。
+
+```bash
+cd ~
+git clone https://github.com/TomonoriYoshida/open-clinic-finder.git
+cd open-clinic-finder
+docker run --rm --network host -u "$(id -u):$(id -g)" -e npm_config_cache=/tmp/.npm \
+  -v "$PWD":/app -w /app node:22-alpine sh -c 'npm ci --no-audit --no-fund && npm run build'
+cd ~/medical-facility-master-api-laravel
+docker compose up -d app   # マウントを追加した初回だけ必要
+```
+
+- 本番のビルドでは `NEXT_PUBLIC_API_ORIGIN` を設定しません。サイトは同じオリジンの `/api` を呼び出します。
+- `--network host`: Docker の既定のネットワークでは npm レジストリからの取得が極端に遅くなることがあります。
+- 更新するときは `git pull` してから同じ `docker run` を実行します。`out/` が書き換わった時点で反映され、app コンテナの再起動は不要です（ビルド中の数十秒は `/` が API 仕様書へ転送されます）。
+- ページには Content-Security-Policy などのヘッダーを付けています（`compose.production.yaml` の `CADDY_SERVER_EXTRA_DIRECTIVES`）。地図タイルや住所検索の接続先を増やすときは、そこも変更します。
 
 ## 3. 更新のデプロイ
 
