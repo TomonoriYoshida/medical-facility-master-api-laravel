@@ -157,6 +157,8 @@ curl "https://203-0-113-1.sslip.io/api/v1/medical-facilities?per_page=1"
 Caddy は API のリポジトリの隣（`../open-clinic-finder`、`.env` の `FRONTEND_DIR` で変更可）の `out/` を読み取り専用で参照し、ファイルのないパスと `/api`・`/docs`・`/up` は従来どおり Laravel に渡します。
 ビルドしていないあいだは、`/` は従来どおり API 仕様書へ転送されます。
 
+**clone は、app コンテナを起動（`docker compose up -d`）する前に行います。** マウント元のディレクトリがないまま起動すると、Docker が root 所有の空ディレクトリを作るため、`git clone` が `Permission denied` で失敗します。その場合は、空であることを確かめてから `sudo chown ubuntu:ubuntu ~/open-clinic-finder` を実行すれば、そのまま clone できます（app の再起動は不要）。
+
 ```bash
 cd ~
 git clone https://github.com/TomonoriYoshida/open-clinic-finder.git
