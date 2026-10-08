@@ -8,6 +8,7 @@ use App\Enums\MedicalFacilityStatus;
 use App\Enums\Prefecture;
 use App\Enums\RhbBureau;
 use App\Http\Requests\Api\V1\Concerns\LimitsPageDepth;
+use App\Http\Requests\Api\V1\Concerns\NamesParametersAsIs;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -17,6 +18,7 @@ use Illuminate\Validation\Validator;
 class MedicalFacilityIndexRequest extends FormRequest
 {
     use LimitsPageDepth;
+    use NamesParametersAsIs;
 
     /** Each word adds a LIKE over name and address, so their number is capped. */
     public const int MAX_SEARCH_WORDS = 5;
@@ -82,7 +84,7 @@ class MedicalFacilityIndexRequest extends FormRequest
                 'max:255',
                 function (string $attribute, mixed $value, Closure $fail): void {
                     if (is_string($value) && count(self::searchWords($value)) > self::MAX_SEARCH_WORDS) {
-                        $fail('The :attribute field must not contain more than '.self::MAX_SEARCH_WORDS.' words.');
+                        $fail(':attribute の語は'.self::MAX_SEARCH_WORDS.'語以内にしてください。');
                     }
                 },
             ],

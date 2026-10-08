@@ -76,9 +76,13 @@ return [
     | by Laravel's translation / localization methods. This option can be
     | set to any locale for which you plan to have translation strings.
     |
+    | Fixed to Japanese rather than read from APP_LOCALE: the API serves
+    | Japanese data to Japanese users, and its messages (lang/ja) are part of
+    | that, not a deployment setting.
+    |
     */
 
-    'locale' => env('APP_LOCALE', 'en'),
+    'locale' => 'ja',
 
     'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
 

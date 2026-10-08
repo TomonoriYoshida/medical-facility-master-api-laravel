@@ -2,12 +2,15 @@
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Http\Requests\Api\V1\Concerns\NamesParametersAsIs;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class PublicHolidayIndexRequest extends FormRequest
 {
+    use NamesParametersAsIs;
+
     /**
      * Determine if the user is authorized to make this request.
      */

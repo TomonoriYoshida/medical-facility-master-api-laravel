@@ -6,6 +6,7 @@ use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityEventType;
 use App\Enums\Prefecture;
 use App\Http\Requests\Api\V1\Concerns\LimitsPageDepth;
+use App\Http\Requests\Api\V1\Concerns\NamesParametersAsIs;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -13,6 +14,7 @@ use Illuminate\Validation\Rule;
 class MedicalFacilityEventIndexRequest extends FormRequest
 {
     use LimitsPageDepth;
+    use NamesParametersAsIs;
 
     /**
      * Determine if the user is authorized to make this request.

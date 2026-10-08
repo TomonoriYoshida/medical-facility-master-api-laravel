@@ -1,0 +1,5 @@
+{
+    "(and :count more error)": "（ほか :count 件のエラー）",
+    "(and :count more errors)": "（ほか :count 件のエラー）",
+    "The given data was invalid.": "パラメータが正しくありません。"
+}
