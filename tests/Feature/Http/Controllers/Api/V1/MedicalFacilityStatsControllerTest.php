@@ -128,11 +128,11 @@ class MedicalFacilityStatsControllerTest extends TestCase
     public static function invalidRequests(): array
     {
         return [
-            'group_by missing' => [[], 'group_by', 'The group by field is required.'],
-            'group_by unknown' => [['group_by' => 'bureau'], 'group_by', 'The selected group by is invalid.'],
-            'month without a start' => [['group_by' => 'month', 'designated_to' => '2026-01-31'], 'designated_from', 'The designated from field is required.'],
-            'month without an end' => [['group_by' => 'month', 'designated_from' => '2026-01-01'], 'designated_to', 'The designated to field is required.'],
-            'month over 60 months' => [['group_by' => 'month', 'designated_from' => '2021-01-01', 'designated_to' => '2026-01-01'], 'designated_to', 'The period must not exceed 60 months.'],
+            'group_by missing' => [[], 'group_by', 'group_by を指定してください。'],
+            'group_by unknown' => [['group_by' => 'bureau'], 'group_by', 'group_by の値が正しくありません。'],
+            'month without a start' => [['group_by' => 'month', 'designated_to' => '2026-01-31'], 'designated_from', 'designated_from を指定してください。'],
+            'month without an end' => [['group_by' => 'month', 'designated_from' => '2026-01-01'], 'designated_to', 'designated_to を指定してください。'],
+            'month over 60 months' => [['group_by' => 'month', 'designated_from' => '2021-01-01', 'designated_to' => '2026-01-01'], 'designated_to', '期間は60か月以内にしてください。'],
         ];
     }
 

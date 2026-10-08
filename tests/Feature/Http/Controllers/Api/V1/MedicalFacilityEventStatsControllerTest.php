@@ -111,12 +111,12 @@ class MedicalFacilityEventStatsControllerTest extends TestCase
     public static function invalidRequests(): array
     {
         return [
-            'group_by missing' => [['event_type' => 1], 'group_by', 'The group by field is required.'],
-            'group_by by department' => [['group_by' => 'department_category', 'event_type' => 1], 'group_by', 'The selected group by is invalid.'],
-            'event_type missing' => [['group_by' => 'municipality'], 'event_type', 'The event type field is required.'],
-            'event_type changed' => [['group_by' => 'municipality', 'event_type' => 3], 'event_type', 'The selected event type is invalid.'],
-            'month without a start' => [['group_by' => 'month', 'event_type' => 2, 'occurred_to' => '2026-01-31'], 'occurred_from', 'The occurred from field is required.'],
-            'month over 60 months' => [['group_by' => 'month', 'event_type' => 2, 'occurred_from' => '2021-01-01', 'occurred_to' => '2026-01-01'], 'occurred_to', 'The period must not exceed 60 months.'],
+            'group_by missing' => [['event_type' => 1], 'group_by', 'group_by を指定してください。'],
+            'group_by by department' => [['group_by' => 'department_category', 'event_type' => 1], 'group_by', 'group_by の値が正しくありません。'],
+            'event_type missing' => [['group_by' => 'municipality'], 'event_type', 'event_type を指定してください。'],
+            'event_type changed' => [['group_by' => 'municipality', 'event_type' => 3], 'event_type', 'event_type の値が正しくありません。'],
+            'month without a start' => [['group_by' => 'month', 'event_type' => 2, 'occurred_to' => '2026-01-31'], 'occurred_from', 'occurred_from を指定してください。'],
+            'month over 60 months' => [['group_by' => 'month', 'event_type' => 2, 'occurred_from' => '2021-01-01', 'occurred_to' => '2026-01-01'], 'occurred_to', '期間は60か月以内にしてください。'],
         ];
     }
 

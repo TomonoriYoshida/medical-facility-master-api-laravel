@@ -28,7 +28,7 @@ class ApiRateLimitTest extends TestCase
         $this->getJson(route('api.v1.medical-facilities.index'))
             ->assertTooManyRequests()
             ->assertHeader('Retry-After')
-            ->assertJsonStructure(['message']);
+            ->assertExactJson(['message' => 'リクエストが多すぎます。しばらく待ってから、もう一度お試しください。']);
     }
 
     public function test_the_limit_is_shared_across_api_endpoints(): void

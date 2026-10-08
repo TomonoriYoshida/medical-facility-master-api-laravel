@@ -11,7 +11,7 @@ use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Http\Request;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
-use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -43,9 +43,17 @@ return Application::configure(basePath: dirname(__DIR__))
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
 
-        // The default message names the model class (e.g. "No query results
-        // for model [App\Models\MedicalFacility] 1") even with debug off.
-        $exceptions->render(fn (NotFoundHttpException $e, Request $request) => $request->is('api/*')
-            ? response()->json(['message' => '見つかりません。'], 404)
+        // The API's errors in Japanese, like its validation messages. The
+        // default 404 message also names the model class (e.g. "No query
+        // results for model [App\Models\MedicalFacility] 1") even with debug
+        // off. The exception's headers (429's Retry-After) are kept.
+        $messages = [
+            404 => '見つかりません。',
+            405 => 'このURLは GET だけに対応しています。',
+            429 => 'リクエストが多すぎます。しばらく待ってから、もう一度お試しください。',
+        ];
+
+        $exceptions->render(fn (HttpExceptionInterface $e, Request $request) => $request->is('api/*') && isset($messages[$e->getStatusCode()])
+            ? response()->json(['message' => $messages[$e->getStatusCode()]], $e->getStatusCode(), $e->getHeaders())
             : null);
     })->create();

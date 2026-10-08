@@ -7,6 +7,7 @@ use App\Enums\FacilityStatsGrouping;
 use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityStatus;
 use App\Enums\Prefecture;
+use App\Http\Requests\Api\V1\Concerns\NamesParametersAsIs;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
@@ -15,6 +16,8 @@ use Illuminate\Validation\Validator;
 
 class MedicalFacilityStatsRequest extends FormRequest
 {
+    use NamesParametersAsIs;
+
     /** Monthly buckets are returned for every month in the range, so it is capped. */
     public const int MAX_MONTHS = 60;
 
@@ -111,7 +114,7 @@ class MedicalFacilityStatsRequest extends FormRequest
                 $to = Carbon::parse($this->string('designated_to')->toString())->startOfMonth();
 
                 if ($from->diffInMonths($to) + 1 > self::MAX_MONTHS) {
-                    $validator->errors()->add('designated_to', 'The period must not exceed '.self::MAX_MONTHS.' months.');
+                    $validator->errors()->add('designated_to', '期間は'.self::MAX_MONTHS.'か月以内にしてください。');
                 }
             },
         ];
