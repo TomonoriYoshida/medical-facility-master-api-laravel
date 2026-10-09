@@ -69,9 +69,12 @@ exec "$@"
 EOF
 
 # Run as an unprivileged user that can still bind ports 80/443.
+# /config is XDG_CONFIG_HOME in this image; tinker (PsySH) keeps its settings
+# in /config/psysh and refuses to run at all when it cannot write there.
 RUN useradd --create-home app \
     && setcap CAP_NET_BIND_SERVICE=+eip /usr/local/bin/frankenphp \
-    && chown -R app:app storage bootstrap/cache /config/caddy /data/caddy
+    && mkdir -p /config/psysh \
+    && chown -R app:app storage bootstrap/cache /config/caddy /data/caddy /config/psysh
 
 USER app
 
