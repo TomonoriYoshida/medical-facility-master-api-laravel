@@ -37,13 +37,27 @@ services:
             SERVER_NAME: '${SERVER_NAME:?SERVER_NAME must be set in .env}'
             # Access log (JSON, one file per day, kept 14 days). Caddy
             # redacts the Cookie and Authorization headers by default.
+            # Where visitors searched from is left out: the location in the
+            # query (the site's lat/lng/place, the API's latitude/longitude)
+            # and the query of the Referer, which carries the page's own.
+            # access-log:check reads only the path, status and client IP.
             CADDY_SERVER_EXTRA_DIRECTIVES: |
                 log {
                     output file /app/storage/logs/access.log {
                         roll_interval 24h
                         roll_keep_for 336h
                     }
-                    format json
+                    format filter {
+                        wrap json
+                        request>uri query {
+                            delete lat
+                            delete lng
+                            delete place
+                            delete latitude
+                            delete longitude
+                        }
+                        request>headers>Referer regexp \?.*$ ""
+                    }
                 }
                 # The everyday-use site (open-clinic-finder), a static
                 # export built on this server, is served at / ahead of
