@@ -550,7 +550,7 @@ rm /tmp/access.jsonl   # IP アドレスを含むので、調べ終わったら�
 - 正当な利用者を遮断してしまった場合は、次のように解除します。
 
 ```bash
-docker compose exec app php artisan tinker --execute 'Cache::store("file")->forget("scanner-block:198.51.100.1");'
+docker compose exec app php artisan cache:forget "scanner-block:198.51.100.1" file
 ```
 
 ### IP アドレスの遮断
