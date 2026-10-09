@@ -46,11 +46,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // The API's errors in Japanese, like its validation messages. The
         // default 404 message also names the model class (e.g. "No query
         // results for model [App\Models\MedicalFacility] 1") even with debug
-        // off. The exception's headers (429's Retry-After) are kept.
+        // off. The exception's headers (429's Retry-After) are kept. 503 is
+        // maintenance mode (artisan down), which the frontends tell apart.
         $messages = [
             404 => '見つかりません。',
             405 => 'このURLは GET だけに対応しています。',
             429 => 'リクエストが多すぎます。しばらく待ってから、もう一度お試しください。',
+            503 => 'ただいまメンテナンス中です。しばらくしてから、もう一度お試しください。',
         ];
 
         $exceptions->render(fn (HttpExceptionInterface $e, Request $request) => $request->is('api/*') && isset($messages[$e->getStatusCode()])
