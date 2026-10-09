@@ -187,6 +187,27 @@ docker compose up -d
 - worker は、実行中のジョブが終わるまで最大10分待ってから停止します（`stop_grace_period`）。取込の時間帯（05:00〜06:00 頃）を避けると、すぐに切り替わります。
 - 設定（config）とルートのキャッシュは、コンテナの起動時に作り直されます。`.env` を変えた場合も `docker compose up -d` で反映されます。
 
+### メンテナンス中の表示
+
+時間のかかる migrate やデータの入れ直しなど、API が正しく答えられない作業の間は、メンテナンスモードにします。API は `503`（「ただいまメンテナンス中です。」）を返し、2つのフロントエンド（デモ用と一般向けサイト）はページ上部にお知らせを出します。お知らせは1分ごとに確認し直され、メンテナンスが終わると自動で消えます。
+
+```bash
+docker compose exec app php artisan down
+# ……作業（docker compose build / migrate / up -d など）……
+docker compose exec app php artisan up
+```
+
+- 状態はデータベース（キャッシュのテーブル）に保存されるため、作業中に `docker compose up -d` でコンテナを作り直しても続きます。app が止まっているときは `exec` の代わりに `docker compose run --rm app php artisan up` を使います。
+- メンテナンス中は、worker は取込ジョブを実行せず、scheduler も毎日の処理を実行しません。**作業が終わったら、必ず `up` を実行します。**
+- 一般向けサイトのページ（`/`）は Caddy が配信するため、メンテナンス中も開けます。API 仕様書（`/docs/api`）は `503` になります。
+- `docker compose up -d` でコンテナを作り直す数秒〜十数秒は、メンテナンスモードに関係なくサーバーにつながりません。この間、デモ用は「APIに接続できませんでした」と表示し、一般向けサイトはページ自体が開けません。
+- この仕組みを含む版へ初めて更新するときは、`.env` に次の2行を追加してから `docker compose up -d` を実行します（`.env.production.example` と同じ）。追加しないと、状態がコンテナの中のファイルに保存され、作り直すと消えます。
+
+  ```
+  APP_MAINTENANCE_DRIVER=cache
+  APP_MAINTENANCE_STORE=database
+  ```
+
 ### 市区町村マスタの投入・更新
 
 市区町村コードの機能を含む版へ初めて更新するとき、および `database/seeders/data/municipalities.csv` を更新した版をデプロイしたときは、`migrate` の後に次を実行します。
