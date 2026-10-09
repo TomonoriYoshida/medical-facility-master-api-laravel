@@ -4,6 +4,7 @@ namespace Tests\Feature\Console;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
@@ -109,6 +110,41 @@ class CheckAccessLogTest extends TestCase
             ->assertExitCode(0);
 
         Log::shouldNotHaveReceived('error');
+    }
+
+    public function test_a_flagged_ip_is_annotated_with_its_country(): void
+    {
+        Http::fake(['*ip-api.com/*' => Http::response(['status' => 'success', 'country' => '日本', 'countryCode' => 'JP'])]);
+        $this->writeLog(array_fill(0, 5, $this->entry(ip: '9.9.9.9')));
+
+        $this->assertReported('9.9.9.9（日本 (JP)） から5件のリクエストがあります（しきい値 5）。');
+    }
+
+    public function test_an_ip_whose_country_is_unknown_is_shown_without_one(): void
+    {
+        Http::fake(['*ip-api.com/*' => Http::response(null, 429)]);
+        $this->writeLog(array_fill(0, 5, $this->entry(ip: '9.9.9.9')));
+
+        $this->assertReported('9.9.9.9 から5件のリクエストがあります（しきい値 5）。');
+    }
+
+    public function test_documentation_and_private_ips_are_not_looked_up(): void
+    {
+        Http::fake();
+        $this->writeLog(array_fill(0, 5, $this->entry(ip: '192.0.2.77')));
+
+        $this->assertReported('192.0.2.77 から5件のリクエストがあります（しきい値 5）。');
+        Http::assertNothingSent();
+    }
+
+    public function test_geolocation_can_be_turned_off(): void
+    {
+        config(['api.access_log.geo.endpoint' => '']);
+        Http::fake();
+        $this->writeLog(array_fill(0, 5, $this->entry(ip: '9.9.9.9')));
+
+        $this->assertReported('9.9.9.9 から5件のリクエストがあります（しきい値 5）。');
+        Http::assertNothingSent();
     }
 
     private function assertReported(string $finding): void
