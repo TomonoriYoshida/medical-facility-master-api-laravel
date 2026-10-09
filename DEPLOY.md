@@ -469,6 +469,7 @@ fi
 
 - どちらもボリューム `storage-logs` にあり、コンテナを作り直す更新のデプロイでも消えません。14日より古いものは自動で削除します（アプリのログは `LOG_DAILY_DAYS`）。
 - アクセスログには利用者の IP アドレスが含まれるため、保存期間を14日にしています。`Cookie` と `Authorization` ヘッダーは Caddy が伏せて記録します。
+- 利用者がどこを探したかは残しません。URL のクエリのうち位置に関わるもの（一般向けサイトの `lat`・`lng`・`place`、API の `latitude`・`longitude`）を消し、`Referer` ヘッダーはクエリ（`?` 以降）を削って記録します（`compose.production.yaml` の `format filter`）。不審なアクセスの確認（`access-log:check`）は、パス・ステータス・IP アドレスしか使わないため影響しません。
 - `docker compose logs` にも同じアプリのログが出ますが、こちらはコンテナを作り直すと消えます。
 
 ```bash
