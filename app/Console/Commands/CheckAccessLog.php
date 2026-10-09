@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\AccessLog\AccessLogSummary;
+use App\Services\AccessLog\IpCountryLocator;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -26,6 +27,12 @@ class CheckAccessLog extends Command
     private const string TIMEZONE = 'Asia/Tokyo';
 
     private const int TOP_LIMIT = 10;
+
+    public function __construct(
+        private readonly IpCountryLocator $countries,
+    ) {
+        parent::__construct();
+    }
 
     public function handle(): int
     {
@@ -74,7 +81,7 @@ class CheckAccessLog extends Command
         // the alert channel) is where the finding has to go.
         Log::error("access-log: {$day} に不審なアクセスの可能性があります", [
             'findings' => $findings,
-            'top_ips' => array_map(fn (array $counts): int => $counts['requests'], $summary->topIps(5)),
+            'top_ips' => $this->topIpsForLog($summary->topIps(5)),
             'top_not_found' => $summary->topNotFoundPaths(5),
         ]);
 
@@ -140,13 +147,44 @@ class CheckAccessLog extends Command
         }
 
         foreach ($summary->ipsProbingAtLeast($thresholds['scanner_requests_per_ip']) as $ip => $requests) {
-            $findings[] = "{$ip} から脆弱性探し（.env・.git・.php など）のリクエストが{$requests}件あります（しきい値 {$thresholds['scanner_requests_per_ip']}）。";
+            $findings[] = "{$this->withCountry($ip)} から脆弱性探し（.env・.git・.php など）のリクエストが{$requests}件あります（しきい値 {$thresholds['scanner_requests_per_ip']}）。";
         }
 
         foreach ($summary->ipsSendingAtLeast($thresholds['requests_per_ip']) as $ip => $requests) {
-            $findings[] = "{$ip} から{$requests}件のリクエストがあります（しきい値 {$thresholds['requests_per_ip']}）。";
+            $findings[] = "{$this->withCountry($ip)} から{$requests}件のリクエストがあります（しきい値 {$thresholds['requests_per_ip']}）。";
         }
 
         return $findings;
+    }
+
+    /**
+     * The IP with its country in parentheses when it can be resolved, e.g.
+     * "198.18.0.9（日本 (JP)）", or the bare IP otherwise.
+     */
+    private function withCountry(string $ip): string
+    {
+        $country = $this->countries->label($ip);
+
+        return $country === null ? $ip : "{$ip}（{$country}）";
+    }
+
+    /**
+     * The busiest IPs for the log context, each with its country appended
+     * when known: "198.51.100.9 (日本 (JP))" => request count.
+     *
+     * @param  array<string, array{requests: int, rate_limited: int}>  $topIps
+     * @return array<string, int>
+     */
+    private function topIpsForLog(array $topIps): array
+    {
+        $result = [];
+
+        foreach ($topIps as $ip => $counts) {
+            $country = $this->countries->label($ip);
+            $label = $country === null ? $ip : "{$ip} ({$country})";
+            $result[$label] = $counts['requests'];
+        }
+
+        return $result;
     }
 }

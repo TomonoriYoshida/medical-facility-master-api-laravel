@@ -86,6 +86,16 @@ return [
             // (App\Services\AccessLog\ScannerPaths), blocked or not.
             'scanner_requests_per_ip' => (int) env('ACCESS_ALERT_SCANNER_REQUESTS_PER_IP', 10),
         ],
+
+        // Names the country of a flagged IP in the alert (a hint for the
+        // reader, not a blocking signal). Only the few flagged IPs are
+        // looked up, so a free, keyless endpoint is enough; {ip} is the
+        // address, and the JSON response's country / countryCode are read.
+        // Set the endpoint to an empty string to turn geolocation off.
+        'geo' => [
+            'endpoint' => env('ACCESS_GEO_ENDPOINT', 'http://ip-api.com/json/{ip}?fields=status,country,countryCode&lang=ja'),
+            'timeout' => (int) env('ACCESS_GEO_TIMEOUT', 3),
+        ],
     ],
 
     /*
