@@ -12,10 +12,13 @@ use App\Services\MedicalInfoNet\ClosingTimes;
 use App\Services\MedicalInfoNet\OpeningMoment;
 use App\Services\Text\AddressNormalizer;
 use App\Services\Text\ItaijiNormalizer;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class MedicalFacilityController extends Controller
@@ -24,6 +27,9 @@ class MedicalFacilityController extends Controller
     use ProvidesAttribution;
 
     private const int DEFAULT_RADIUS = 1000;
+
+    /** How long a `q` search's total is reused; see rememberSearchTotal(). */
+    private const int SEARCH_TOTAL_CACHE_SECONDS = 3600;
 
     /** Meters per degree of latitude (and of longitude at the equator). */
     private const float METERS_PER_DEGREE = 111_320;
@@ -59,11 +65,11 @@ class MedicalFacilityController extends Controller
         }
 
         $totalCap = $request->totalCap();
-        $paginator = $facilities->paginate($request->perPage(), total: function () use ($filters, $openAt, $totalCap): int {
+        $paginator = $facilities->paginate($request->perPage(), total: fn (): int => $this->rememberSearchTotal($filters, function () use ($filters, $openAt, $totalCap): int {
             $counted = $this->facilities($filters, $openAt, forCounting: true);
 
             return $totalCap === null ? $counted->toBase()->getCountForPagination() : $this->countUpTo($counted, $totalCap);
-        });
+        }));
 
         $this->addClosingTimes($paginator->getCollection(), $openAt);
 
@@ -233,6 +239,37 @@ class MedicalFacilityController extends Controller
             ->whereBetween('longitude', [$longitude - $longitudeDelta, $longitude + $longitudeDelta])
             ->whereRaw("{$distance} <= ?", [$longitude, $latitude, $radius])
             ->when($orderByDistance, fn (Builder $query) => $query->orderBy('distance'));
+    }
+
+    /**
+     * Caches the total of a `q` search for an hour, as the stats endpoints
+     * do (RemembersStats). Its LIKE '%word%' reads every facility to count
+     * the matches (~0.1s in production), and the same few words (歯科, 眼科,
+     * 内科...) are searched again and again while paging, whereas the data
+     * changes once a day (the import), so an hour of staleness is harmless.
+     *
+     * Only the filters that change the total make up the key, so paging or
+     * re-sorting reuses it. Searches without `q` are not cached, as they are
+     * mostly cheap. Nor is a nearby search, so that no searched location is
+     * kept (#117).
+     *
+     * @param  array<string, mixed>  $filters
+     * @param  Closure(): int  $count
+     */
+    private function rememberSearchTotal(array $filters, Closure $count): int
+    {
+        if (! isset($filters['q']) || isset($filters['latitude'])) {
+            return $count();
+        }
+
+        $countedFilters = Arr::except($filters, ['page', 'per_page', 'sort', 'pagination', 'cursor']);
+        ksort($countedFilters);
+
+        return Cache::remember(
+            'medical-facility-search-total:v1:'.sha1((string) json_encode($countedFilters)),
+            self::SEARCH_TOTAL_CACHE_SECONDS,
+            $count,
+        );
     }
 
     /**
