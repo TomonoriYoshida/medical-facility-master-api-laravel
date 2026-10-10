@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pint.sh",
+            "timeout": 60,
+            "statusMessage": "Pint で整形中…"
+          }
+        ]
+      }
+    ]
+  }
+}
