@@ -99,7 +99,7 @@ class IndexMedicalFacilityControllerTest extends TestCase
     {
         $this->getJson('/api/v1/medical-facilities?latitude=35.68')->assertUnprocessable()->assertJsonValidationErrors('longitude');
         $this->getJson('/api/v1/medical-facilities?latitude=0&longitude=0')->assertUnprocessable()->assertJsonValidationErrors(['latitude', 'longitude']);
-        $this->getJson('/api/v1/medical-facilities?latitude=35.68&longitude=139.76&radius=50000')->assertUnprocessable()->assertJsonValidationErrors('radius');
+        $this->getJson('/api/v1/medical-facilities?latitude=35.68&longitude=139.76&radius=50001')->assertUnprocessable()->assertJsonValidationErrors('radius');
     }
 
     public function test_municipality_code_must_be_five_digits(): void
