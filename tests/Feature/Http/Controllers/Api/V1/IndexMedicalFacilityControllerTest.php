@@ -373,7 +373,7 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $response->assertJsonValidationErrors('q');
     }
 
-    public function test_search_total_is_reused_for_ten_minutes(): void
+    public function test_search_total_is_reused_for_an_hour(): void
     {
         MedicalFacility::factory()->create(['name' => '札幌眼科']);
         $this->getJson('/api/v1/medical-facilities?q='.urlencode('眼科'))->assertJsonPath('meta.total', 1);
@@ -384,7 +384,7 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $cached->assertJsonPath('meta.total', 1);
         $cached->assertJsonCount(2, 'data');
 
-        $this->travel(11)->minutes();
+        $this->travel(61)->minutes();
 
         $this->getJson('/api/v1/medical-facilities?q='.urlencode('眼科'))->assertJsonPath('meta.total', 2);
     }

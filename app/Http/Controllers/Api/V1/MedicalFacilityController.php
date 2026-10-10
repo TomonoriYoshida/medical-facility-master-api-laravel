@@ -29,7 +29,7 @@ class MedicalFacilityController extends Controller
     private const int DEFAULT_RADIUS = 1000;
 
     /** How long a `q` search's total is reused; see rememberSearchTotal(). */
-    private const int SEARCH_TOTAL_CACHE_SECONDS = 600;
+    private const int SEARCH_TOTAL_CACHE_SECONDS = 3600;
 
     /** Meters per degree of latitude (and of longitude at the equator). */
     private const float METERS_PER_DEGREE = 111_320;
@@ -242,16 +242,16 @@ class MedicalFacilityController extends Controller
     }
 
     /**
-     * Caches the total of a `q` search for a few minutes. Its LIKE '%word%'
-     * reads every facility to count the matches (~0.1s in production), and
-     * the same few words (歯科, 眼科, 内科...) are searched again and again
-     * while paging, whereas the data changes once a day (the import).
+     * Caches the total of a `q` search for an hour, as the stats endpoints
+     * do (RemembersStats). Its LIKE '%word%' reads every facility to count
+     * the matches (~0.1s in production), and the same few words (歯科, 眼科,
+     * 内科...) are searched again and again while paging, whereas the data
+     * changes once a day (the import), so an hour of staleness is harmless.
      *
      * Only the filters that change the total make up the key, so paging or
-     * re-sorting reuses it. Searches without `q` are not cached: they are
-     * mostly cheap, and the database cache store never prunes expired rows,
-     * so caching every filter combination would only grow the table. Nor is
-     * a nearby search, so that no searched location is kept (#117).
+     * re-sorting reuses it. Searches without `q` are not cached, as they are
+     * mostly cheap. Nor is a nearby search, so that no searched location is
+     * kept (#117).
      *
      * @param  array<string, mixed>  $filters
      * @param  Closure(): int  $count
