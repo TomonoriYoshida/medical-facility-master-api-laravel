@@ -41,6 +41,19 @@ class AssignOpeningHoursTest extends TestCase
         );
     }
 
+    public function test_a_facility_listed_as_without_outpatients_keeps_its_match_but_gets_no_opening_periods(): void
+    {
+        $facility = $this->facility();
+        $location = $this->location('丸の内クリニック');
+        MedicalInfoNetSchedule::factory()->create(['source_id' => $location->source_id]);
+        config(['medical_info_net.without_outpatients' => [$location->source_id]]);
+
+        $this->artisan('facilities:assign-opening-hours')->assertExitCode(0);
+
+        $this->assertSame($location->source_id, $facility->refresh()->medical_info_net_id);
+        $this->assertSame(0, MedicalFacilityOpeningPeriod::query()->count());
+    }
+
     public function test_facilities_without_exactly_one_match_get_none_and_lose_a_stale_one(): void
     {
         $unmatched = $this->facility(['name' => '別のクリニック', 'medical_info_net_id' => 'stale']);
@@ -73,6 +86,11 @@ class AssignOpeningHoursTest extends TestCase
             ->assertExitCode(0);
 
         $this->location('丸の内クリニック');
+        $this->artisan('facilities:assign-opening-hours')
+            ->expectsOutputToContain('1施設のうち1施設')
+            ->assertExitCode(0);
+
+        config(['medical_info_net.without_outpatients' => []]);
         $this->artisan('facilities:assign-opening-hours')
             ->expectsOutputToContain('1施設のうち1施設')
             ->assertExitCode(0);
