@@ -23,6 +23,8 @@ use stdClass;
  * The inputs change only when facilities are imported (updated_at moves on
  * a new facility, a change or a closure) or the 医療情報ネット is
  * re-imported, so an unchanged fingerprint of those skips the run.
+ * Facilities listed in medical_info_net.without_outpatients keep their
+ * match but get no periods.
  */
 final class OpeningHoursAssigner
 {
@@ -102,6 +104,7 @@ final class OpeningHoursAssigner
             ->whereIn('source_id', $sourceIds)
             ->toBase()
             ->pluck('schedules', 'source_id');
+        $withoutOutpatients = config('medical_info_net.without_outpatients', []);
         $periods = [];
         $changedIds = [];
 
@@ -113,7 +116,7 @@ final class OpeningHoursAssigner
                 $changedIds[(int) $facility->id] = $sourceId;
             }
 
-            if ($location === null || ! $schedules->has($sourceId)) {
+            if ($location === null || ! $schedules->has($sourceId) || in_array($sourceId, $withoutOutpatients, true)) {
                 continue;
             }
 
@@ -171,6 +174,7 @@ final class OpeningHoursAssigner
             MedicalInfoNetLocation::query()->count(),
             (string) MedicalInfoNetLocation::query()->max('id'),
             (string) MedicalInfoNetSchedule::query()->max('id'),
+            implode(',', config('medical_info_net.without_outpatients', [])),
         ]);
     }
 }
