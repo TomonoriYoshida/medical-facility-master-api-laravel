@@ -123,6 +123,7 @@ docker compose up -d
 docker compose exec scheduler php artisan rhb:download
 docker compose exec app php artisan rhb:import --wait
 docker compose exec app php artisan medical-info-net:import   # 医療情報ネットの座標（約20秒）
+docker compose exec app php artisan national-land:import      # 国土数値情報の位置（約1分）
 docker compose exec app php artisan population:import         # 市区町村別の人口（数秒）
 docker compose exec app php artisan facilities:geocode   # 座標を付与
 docker compose exec app php artisan rhb:export        # 一括ダウンロードのファイルを作成
@@ -240,6 +241,16 @@ docker compose run --rm app php artisan facilities:geocode
 - 以降は scheduler が毎日 06:30 に、新規・移転した施設だけを処理します。
 - アドレス・ベース・レジストリの位置データは拡充されていくため、ときどき（数か月に1回程度）`facilities:geocode --all` で全施設を付け直すと、町丁目レベルだった施設が番地レベルになることがあります。
 
+### 国土数値情報の位置（初回）
+
+国土数値情報の位置を使う版へ初めて更新したときは、`migrate` の後に次を一度だけ実行します（全国で約1分。2020年度のデータで更新されないため、定期実行はしません）。
+
+```bash
+docker compose run --rm app php artisan national-land:import
+```
+
+- 座標が町丁目・なしの施設が、次の 06:30 の `facilities:geocode` で付け直す対象になります（`updated_at` は座標が実際に変わった施設だけ動きます）。すぐに反映する場合は `facilities:geocode` も実行します。
+
 ### 診療時間・休診日（初回）
 
 診療時間の機能を含む版へ初めて更新したときは、`migrate` の後に次を実行します（全国で数分）。取り込み済みの版でも、施設IDと診療時間を入れるために `--force` で取り込み直します。以降は scheduler が毎月2日に新しい版を確認します。
@@ -248,7 +259,7 @@ docker compose run --rm app php artisan facilities:geocode
 docker compose run --rm app php artisan medical-info-net:import --force
 ```
 
-- 取り込み直すと、座標が町丁目・医療情報ネット・なしの施設が、次の 06:30 の `facilities:geocode` で付け直す対象になります（`updated_at` は座標が実際に変わった施設だけ動きます）。
+- 取り込み直すと、座標が町丁目・医療情報ネット・国土数値情報・なしの施設が、次の 06:30 の `facilities:geocode` で付け直す対象になります（`updated_at` は座標が実際に変わった施設だけ動きます）。
 
 ### 受付中の施設の検索・祝日（初回）
 

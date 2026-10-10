@@ -16,6 +16,7 @@
 ```
 medical_facilities (1) ──< (多) medical_facility_events
 medical_info_net_locations (1) ── (0..1) medical_info_net_schedules   ※ source_id で対応。施設とは名称・所在地で照合
+national_land_medical_locations                                       ※ 施設とは名称・所在地で照合（座標の補完だけ）
 ```
 
 診療科目は`medical_facilities.department_categories`に大分類タグの配列として直接持たせており、
@@ -43,7 +44,7 @@ medical_info_net_locations (1) ── (0..1) medical_info_net_schedules   ※ so
 | `address_normalized` | string | ✓ | `address`を`App\Services\Text\AddressNormalizer`で正規化した検索用カラム。`MedicalFacilityObserver`が保存時に自動計算するため`#[Fillable]`には含まれない |
 | `latitude` | decimal(10,6) | ✓ | 所在地座標（緯度）。地方厚生局データには含まれないため、`facilities:geocode`が住所からアドレス・ベース・レジストリで求める（下記「ジオコーディング」）。求められなかった施設・未処理の施設はnull。住所が変わると`MedicalFacilityObserver`がnullに戻す |
 | `longitude` | decimal(10,6) | ✓ | 所在地座標（経度）。同上。`(latitude, longitude)`の複合インデックスで近隣検索の範囲を絞る |
-| `geocode_level` | unsignedTinyInteger | ✓ | `App\Enums\GeocodeLevel` をcast。座標の精度。1:住居（〇番〇号） 2:街区（〇番） 3:地番（〇番地〇） 4:地番（枝番なし。同じ地番の別の枝番の座標） 5:町丁目（代表点） 6:医療情報ネット（厚生労働省の座標。下記「ジオコーディング」）。座標がない施設はnull |
+| `geocode_level` | unsignedTinyInteger | ✓ | `App\Enums\GeocodeLevel` をcast。座標の精度。1:住居（〇番〇号） 2:街区（〇番） 3:地番（〇番地〇） 4:地番（枝番なし。同じ地番の別の枝番の座標） 5:町丁目（代表点） 6:医療情報ネット（厚生労働省の座標。下記「ジオコーディング」の5） 7:国土数値情報（国土交通省「国土数値情報（医療機関）」の位置。同じく6）。座標がない施設はnull |
 | `geocoded_address` | string | ✓ | 座標を求めたときの`address`。`address`と異なる施設（新規・移転）だけを`facilities:geocode`が処理する。座標を求められなかった施設にも入れ、毎日の再試行を防ぐ（`--all`で再試行） |
 | `medical_info_net_id` | string(20) | ✓ | 照合できた医療情報ネットの施設ID（`medical_info_net_locations.source_id`）。`facilities:assign-opening-hours`が毎朝付け直す（`updated_at`は動かさない。APIでは返さず、診療時間のAPIと`open_at`の判定に使う）。照合できない施設はnull |
 | `phone_number` | string | ✓ | 電話番号。区切り文字を`0X-XXXX-XXXX`形式のハイフンに正規化して保持（括弧区切り・連続ハイフンのタイプミスのみ補正、桁の欠落など元データから正しい形を機械的に復元できないものはそのまま保持） |
@@ -115,7 +116,7 @@ CSVを更新してシーダーを再実行したあとは、`facilities:assign-m
 | `published_on` | date | 元データの公開時点（例: 2026-06-01） |
 | `created_at` / `updated_at` | datetime | |
 
-インデックス: `(municipality_code, institution_type)`、`source_id`。取り込むと、座標が町丁目・医療情報ネット・なしの施設の`geocoded_address`を空にし、次の`facilities:geocode`で付け直す（`updated_at`は座標が実際に変わった施設だけ動く）。
+インデックス: `(municipality_code, institution_type)`、`source_id`。取り込むと、座標が町丁目・医療情報ネット・国土数値情報・なしの施設の`geocoded_address`を空にし、次の`facilities:geocode`で付け直す（`updated_at`は座標が実際に変わった施設だけ動く）。
 
 ## `medical_info_net_schedules`
 
@@ -129,6 +130,21 @@ CSVを更新してシーダーを再実行したあとは、`facilities:assign-m
 | `created_at` / `updated_at` | datetime | |
 
 全国の取り込み（2026年6月版、ローカルで約1分）: 203,903施設、うち診療時間あり201,196施設。指定中の施設のうち診療時間を返せるのは、病院93.7%・診療所81.3%・歯科診療所79.4%・薬局94.0%（2026-10-05計測）。
+
+## `national_land_medical_locations`
+
+国土交通省「国土数値情報（医療機関）」（P04、2020年度。CC BY 4.0）の病院・診療所・歯科診療所の位置。地図から読み取った位置で、薬局は含まない。更新されないデータのため定期実行はせず、`national-land:import`を一度実行する（再実行すると丸ごと入れ替える）。範囲外（`RHB_PREFECTURES`）の都道府県は取得しない。列は`medical_info_net_locations`と同じ作りで、照合も同じ`MedicalInfoNetMatcher`で行う（下記「ジオコーディング」の6）。
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| `id` | bigint (PK) | 内部主キー |
+| `institution_type` | unsignedTinyInteger | `App\Enums\InstitutionType`。元データの医療機関分類（1:病院 2:一般診療所 3:歯科診療所）がそのまま対応する |
+| `municipality_code` | char(5) | 元データに市区町村コードがないため、所在地（市区町村名から始まる）を`MunicipalityResolver`で読んだもの。読めない行（市区町村名が省かれた所在地など。全国で約2%）は入れない |
+| `name_key` / `address_key` | string | `medical_info_net_locations`と同じ`FacilityMatchingKeys`の照合用キー。ただし`address_key`は市区町村より後ろの部分から作る（元データは横浜市の区を「戸塚区…」と市名を省いて書くなど、市区町村の書き方が厚生局データと違うことがあるため。照合する施設側も同じ部分で比べる） |
+| `latitude` / `longitude` | decimal(10,6) | 元データの位置 |
+| `created_at` / `updated_at` | datetime | |
+
+インデックス: `(municipality_code, institution_type)`。取り込むと、座標が町丁目・国土数値情報・なしの施設の`geocoded_address`を空にし、次の`facilities:geocode`で付け直す。
 
 ## `medical_facility_opening_periods`
 
@@ -252,6 +268,10 @@ Observerは`name`/`address`が変わった時しか正規化カラムを再計�
 
 **医療情報ネットの座標の実測**（2026-10-01、指定中の223,291件）: 1件に照合できたのは178,430件（79.9%）。ABRで番地レベルの施設と比べると、差の中央値は住居14m・街区40m・地番10m、90%点は49〜204mで、医療情報ネットの座標はほぼ番地単位の精度。一方で1km以上食い違う組（0.5〜1.9%）は、医療情報ネット側が外れている例のほうが多い（市区町村の中心からの距離で判定して、医療情報ネット側219件、ABR側107件。札幌市中央区の施設が約75km北にある例など）。そのため番地レベルではABRを優先し、医療情報ネットは町丁目以下の補完にだけ使う。組み込んだ結果（指定中の施設）: 番地レベル69.7%、医療情報ネット23.2%、町丁目6.4%、判定不能0.6%で、町丁目より細かい座標がある施設は69.7%から92.9%になった。医療情報ネットを使った施設を無作為に15件抜き出し、照合先の名称・住所がすべて同じ施設であることを確かめた。
 
+6. それでも町丁目まで（または何も）しか求められない病院・診療所・歯科診療所は、`NationalLandLocator`が国土数値情報（医療機関）の位置で置き換える。照合は5と同じ規則（`MedicalInfoNetMatcher`）に加えて、住所キー（市区町村より後ろ）も一致することを条件にする（2020年度のデータのため、その後に移転した施設に古い位置を付けないように）。町丁目の代表点から10km以内（大きな大字では代表点から数kmの施設もあるため、5より広い。座標がない施設は5と同じく市区町村の平均位置から30km以内）でなければ使わない
+
+**国土数値情報の位置の実測**（2026-10-11、ローカルの全国データ）: 市区町村を読めた177,365件を取り込んだ（所在地に市区町村名がない約2%は除外。横浜市は「戸塚区…」と市名を省いて書かれているため、`MunicipalityResolver`が政令市の区名だけでも読めるようにした）。名称・住所とも一致した施設で比べると、ABRで番地レベルの施設との差の中央値は8〜37m、10km以上離れていたのは約5.4万件中4件で、医療情報ネットと同等の精度。住所が一致しない組は差が大きく（住居レベルで90%点310m）、移転を含むため使わない。組み込んだ結果、薬局を除く指定中の施設のうち町丁目どまり11,270件と座標なし943件から、7,053件（うち横浜市325件）が国土数値情報の位置になり、町丁目より細かい座標がある施設は全体（薬局を含む）の93.1%から96.2%になった。福島県で町丁目の代表点から1.8km離れていた施設（福島市飯坂町の診療所）など、地方の大きな大字ほど改善が大きい。無作為に12件抜き出し、照合先の名称・住所がすべて同じ施設であることを確かめた。
+
 町字ID（`machiaza_id`）は市区町村の中でしか一意でないため、照合のキーには必ず市区町村コードを含める。
 
 町字マスターは都道府県で8万行を超えることがある（福島県は86,003行、ほぼ小字）ため、市区町村ごとに読んで照合しては捨て、PHPの既定のメモリ上限（128MB）に収める。ファイルは市区町村ごとにまとまって並んでいる前提で、崩れていれば誤った照合をせず例外にする。
@@ -281,6 +301,8 @@ Observerは`name`/`address`が変わった時しか正規化カラムを再計�
 本アプリは取得したデータを構造化・分類（診療科目の大分類化等）した上でデータベースに格納しており、上記の「加工・編集」に該当する。
 
 市区町村の人口（`municipality_populations`）は総務省のサイトのコンテンツで、政府標準利用規約（CC BY 4.0 互換）に従い、出典を記載すれば加工・再配布できる。`meta.attribution.population_source`に出典を含めている。
+
+国土数値情報（医療機関）（`national_land_medical_locations`）はCC BY 4.0で、出典と加工の旨を記載すれば加工・再配布できる。`meta.attribution.national_land_source`に「「国土数値情報（医療機関データ）」（国土交通省）を加工して作成」と出典URLを含めている。
 
 APIでは次のように扱っている。
 

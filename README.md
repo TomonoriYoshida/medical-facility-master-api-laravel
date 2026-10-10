@@ -73,7 +73,7 @@
     "institution_types": [{ "code": 1, "label": "病院" } /* … */],
     "statuses": [/* … */], "bureaus": [/* … */], "department_categories": [/* 26分類 */],
     "event_types": [{ "code": 1, "label": "新規" }, { "code": 2, "label": "廃止" }, { "code": 3, "label": "変更" }],
-    "geocode_levels": [{ "code": 1, "label": "住居" } /* 街区・地番・地番（枝番なし）・町丁目・医療情報ネット */],
+    "geocode_levels": [{ "code": 1, "label": "住居" } /* 街区・地番・地番（枝番なし）・町丁目・医療情報ネット・国土数値情報 */],
     "designation_reasons": ["新規", "組織変更", "交代", "移動", "移転", "その他", "継承"]  // 代表的な値（元データは自由記述）
   }
 }
@@ -107,7 +107,7 @@ GET /api/v1/medical-facilities?designated_from=2026-08-01&designated_to=2026-08-
       "address": "札幌市南区川沿１３条２丁目１番３８号",
       "location": {  // 住所から求めた座標（求められなかった施設は null）
         "latitude": 42.96, "longitude": 141.32,
-        "level": { "code": 2, "label": "街区" }  // 精度: 住居 / 街区 / 地番 / 地番（枝番なし） / 町丁目 / 医療情報ネット
+        "level": { "code": 2, "label": "街区" }  // 精度: 住居 / 街区 / 地番 / 地番（枝番なし） / 町丁目 / 医療情報ネット / 国土数値情報
       },
       "phone_number": "011-571-5670",
       "bed_counts": { "一般": 231, "療養": 206 },
@@ -322,7 +322,7 @@ GET /api/v1/stats/facility-events?group_by=month&event_type=2&occurred_from=2025
 - **取込済みはスキップ**: 取込済みのデータは翌日以降スキップします。パーサー変更時などは `rhb:import --force` で再取込できます。
 - **行単位の失敗**: 1行の保存に失敗しても他の行の取込は続けます。その施設は廃止扱いにせず、ジョブを失敗として記録し、翌日に自動で再試行します。
 - **監視**: 取得の失敗（局のサイトの構造変更を含む）と、取込の失敗・データの更新停止を、[healthchecks.io](https://healthchecks.io/) 経由で通知します（設定は [DEPLOY.md](DEPLOY.md) の「監視」）。
-- **座標**: デジタル庁のアドレス・ベース・レジストリで、住居（〇番〇号）・街区・地番・町丁目の順に、求められる最も細かい位置を使います。町丁目までしか求められない施設は、厚生労働省「医療情報ネット」のオープンデータに同じ施設があればその座標を使います。精度や出所は施設ごとに `location.level` で返します（方法と実測の精度は [DATABASE.md](DATABASE.md) の「ジオコーディング」）。
+- **座標**: デジタル庁のアドレス・ベース・レジストリで、住居（〇番〇号）・街区・地番・町丁目の順に、求められる最も細かい位置を使います。町丁目までしか求められない施設は、厚生労働省「医療情報ネット」のオープンデータに同じ施設があればその座標を、なければ国土交通省「国土数値情報（医療機関）」に同じ所在地の同じ施設があればその位置を使います。精度や出所は施設ごとに `location.level` で返します（方法と実測の精度は [DATABASE.md](DATABASE.md) の「ジオコーディング」）。
 - **テーブル設計**: 詳細は [DATABASE.md](DATABASE.md) を参照してください。
 
 ```
@@ -431,7 +431,7 @@ vendor/bin/sail php vendor/bin/phpstan analyse --memory-limit=1G   # 静的解�
 
 各局の出典URLは、すべてのレスポンスの `meta.attribution.sources` に含めています。
 
-市区町村（`municipality`）と座標（`location`）は、デジタル庁の[アドレス・ベース・レジストリ](https://catalog.registries.digital.go.jp/rc/dataset/)（CC BY 4.0）を加工して作成しています。出典は `meta.attribution.address_source` にあります。町丁目までしか求められない施設の座標と、施設の診療時間・休診日は、厚生労働省の[医療情報ネットのオープンデータ](https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/newpage_43373.html)（PDL1.0）を加工して作成しています（`meta.attribution.medical_info_net_source`）。集計APIの市区町村の人口（`population`）は、総務省の[住民基本台帳に基づく人口、人口動態及び世帯数](https://www.soumu.go.jp/main_sosiki/jichi_gyousei/daityo/jinkou_jinkoudoutai-setaisuu.html)（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.population_source`）。祝日（`/api/v1/holidays`、`open_at` の判定）は、内閣府の[「国民の祝日について」](https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html)の祝日一覧（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.holiday_source`）。
+市区町村（`municipality`）と座標（`location`）は、デジタル庁の[アドレス・ベース・レジストリ](https://catalog.registries.digital.go.jp/rc/dataset/)（CC BY 4.0）を加工して作成しています。出典は `meta.attribution.address_source` にあります。町丁目までしか求められない施設の座標と、施設の診療時間・休診日は、厚生労働省の[医療情報ネットのオープンデータ](https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/newpage_43373.html)（PDL1.0）を加工して作成しています（`meta.attribution.medical_info_net_source`）。そのどちらでも町丁目までしか求められない病院・診療所・歯科診療所の座標は、国土交通省の[国土数値情報（医療機関データ）](https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-P04-2020.html)（CC BY 4.0）を加工して作成しています（`meta.attribution.national_land_source`）。集計APIの市区町村の人口（`population`）は、総務省の[住民基本台帳に基づく人口、人口動態及び世帯数](https://www.soumu.go.jp/main_sosiki/jichi_gyousei/daityo/jinkou_jinkoudoutai-setaisuu.html)（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.population_source`）。祝日（`/api/v1/holidays`、`open_at` の判定）は、内閣府の[「国民の祝日について」](https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html)の祝日一覧（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.holiday_source`）。
 
 - **免責**: データの正確性・完全性は保証しません。最新かつ正確な情報は、各地方厚生局の公表資料を確認してください。
 - **個人名は提供しません**: 元データの開設者名・管理者名は個人名を含むため、APIでは返しません。

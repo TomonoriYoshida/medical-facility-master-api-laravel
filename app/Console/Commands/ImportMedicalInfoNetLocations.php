@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
  * Imports the latest 医療情報ネット coordinates, opening hours and days off
  * (published each June and December), skipping a publication already
  * imported. Facilities whose
- * location could use them (町丁目-level, 医療情報ネット or none) are then
+ * location could use them (町丁目-level, 医療情報ネット, 国土数値情報 or none) are then
  * marked for facilities:geocode to locate again on its next run; updated_at
  * moves only for those whose location actually changes.
  */
@@ -34,7 +34,7 @@ class ImportMedicalInfoNetLocations extends Command
 
         $marked = MedicalFacility::query()
             ->where(fn ($query) => $query
-                ->whereIn('geocode_level', [GeocodeLevel::Town, GeocodeLevel::MedicalInfoNet])
+                ->whereIn('geocode_level', [GeocodeLevel::Town, GeocodeLevel::MedicalInfoNet, GeocodeLevel::NationalLand])
                 ->orWhere(fn ($query) => $query->whereNull('geocode_level')->whereNotNull('geocoded_address')))
             ->toBase()
             ->update(['geocoded_address' => null]);
