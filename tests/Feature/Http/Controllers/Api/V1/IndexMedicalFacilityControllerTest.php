@@ -165,6 +165,7 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $response->assertOk();
         $response->assertJsonPath('meta.attribution.address_source.url', 'https://catalog.registries.digital.go.jp/rc/dataset/');
         $response->assertJsonPath('meta.attribution.medical_info_net_source.url', 'https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/newpage_43373.html');
+        $response->assertJsonPath('meta.attribution.national_land_source.url', 'https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-P04-2020.html');
         $response->assertJsonPath('meta.attribution.notice', '本APIのデータは、各地方厚生局が公開する「保険医療機関・保険薬局の指定一覧」を加工して作成しています。');
         $response->assertJsonCount(8, 'meta.attribution.sources');
         $response->assertJsonPath('meta.attribution.sources.0.bureau', '北海道厚生局');

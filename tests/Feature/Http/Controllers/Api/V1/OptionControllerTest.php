@@ -35,7 +35,8 @@ class OptionControllerTest extends TestCase
             ['code' => 3, 'label' => '変更'],
         ]);
         $response->assertJsonPath('data.geocode_levels.0', ['code' => 1, 'label' => '住居']);
-        $response->assertJsonCount(6, 'data.geocode_levels');
+        $response->assertJsonCount(7, 'data.geocode_levels');
+        $response->assertJsonPath('data.geocode_levels.6', ['code' => 7, 'label' => '国土数値情報']);
         $response->assertJsonPath('data.designation_reasons.0', '新規');
     }
 

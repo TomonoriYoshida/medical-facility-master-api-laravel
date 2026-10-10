@@ -7,6 +7,7 @@ use App\Models\MedicalFacility;
 use App\Services\Geocoding\FacilityGeocoder;
 use App\Services\Geocoding\GeocodeResult;
 use App\Services\Geocoding\MedicalInfoNetLocator;
+use App\Services\Geocoding\NationalLandLocator;
 use App\Services\Rhb\RhbScope;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -16,8 +17,8 @@ use Throwable;
 
 /**
  * Sets latitude/longitude/geocode_level from each facility's address (see
- * FacilityGeocoder, and MedicalInfoNetLocator for where the registry only
- * reaches the 町丁目), for the facilities whose address changed since it
+ * FacilityGeocoder, and MedicalInfoNetLocator then NationalLandLocator for
+ * where the registry only reaches the 町丁目), for the facilities whose address changed since it
  * was last geocoded -- new facilities and moves, so usually only a few a
  * day. --all redoes every facility, e.g. after the registry's position
  * data has grown.
@@ -34,7 +35,7 @@ class GeocodeMedicalFacilities extends Command
 {
     private const int WRITE_CHUNK_SIZE = 1000;
 
-    public function handle(FacilityGeocoder $geocoder, MedicalInfoNetLocator $medicalInfoNet, RhbScope $scope): int
+    public function handle(FacilityGeocoder $geocoder, MedicalInfoNetLocator $medicalInfoNet, NationalLandLocator $nationalLand, RhbScope $scope): int
     {
         $failed = false;
 
@@ -62,7 +63,7 @@ class GeocodeMedicalFacilities extends Command
             $addresses = array_map(fn (array $facility): string => $facility['address'], $facilities);
 
             try {
-                $results = $medicalInfoNet->refine($prefecture, $facilities, $geocoder->geocode($prefecture, $addresses));
+                $results = $nationalLand->refine($prefecture, $facilities, $medicalInfoNet->refine($prefecture, $facilities, $geocoder->geocode($prefecture, $addresses)));
                 $counts = $this->store($results, $addresses);
             } catch (Throwable $exception) {
                 report($exception);

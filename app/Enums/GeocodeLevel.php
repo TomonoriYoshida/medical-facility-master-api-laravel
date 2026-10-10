@@ -14,6 +14,11 @@ namespace App\Enums;
  * MHLW 医療情報ネット publishes for the facility, used instead of a 町丁目
  * point (or of nothing). They agree with this registry's 住居/地番 points
  * within tens of meters for most facilities.
+ *
+ * NationalLand is a source too: the position the MLIT 国土数値情報「医療機関」
+ * (2020年度) gives the facility, used where neither of the above reaches
+ * further than the 町丁目, and only when its address there is the
+ * facility's own (see NationalLandLocator).
  */
 enum GeocodeLevel: int
 {
@@ -23,6 +28,7 @@ enum GeocodeLevel: int
     case ParcelBase = 4;
     case Town = 5;
     case MedicalInfoNet = 6;
+    case NationalLand = 7;
 
     public function label(): string
     {
@@ -33,6 +39,7 @@ enum GeocodeLevel: int
             self::ParcelBase => '地番（枝番なし）',
             self::Town => '町丁目',
             self::MedicalInfoNet => '医療情報ネット',
+            self::NationalLand => '国土数値情報',
         };
     }
 }

@@ -76,7 +76,8 @@ final class MunicipalityResolver
     /**
      * Each municipality is indexed by its full name (郡を含む) and, when
      * that is unambiguous within the prefecture, by its name without the
-     * 郡, since addresses often leave the 郡 out.
+     * 郡, since addresses often leave the 郡 out -- and a ward by its name
+     * without its city, as some sources write Yokohama's ("戸塚区戸塚町").
      *
      * @return array<string, string>
      */
@@ -91,18 +92,18 @@ final class MunicipalityResolver
     private function buildNames(string $prefectureCode): array
     {
         $names = [];
-        $withoutCounty = [];
+        $shortNames = [];
 
         foreach (Municipality::query()->where('prefecture_code', $prefectureCode)->pluck('name', 'code') as $code => $name) {
             $name = $this->normalizer->normalize($name);
             $names[$name] = (string) $code;
 
-            if (preg_match('/^.+?郡(.+)$/u', $name, $matches) === 1) {
-                $withoutCounty[$matches[1]][] = (string) $code;
+            if (preg_match('/^.+?(?:郡(.+[町村])|市(.+区))$/u', $name, $matches) === 1) {
+                $shortNames[$matches[1] ?: $matches[2]][] = (string) $code;
             }
         }
 
-        foreach ($withoutCounty as $name => $codes) {
+        foreach ($shortNames as $name => $codes) {
             if (count($codes) === 1 && ! isset($names[$name])) {
                 $names[$name] = $codes[0];
             }

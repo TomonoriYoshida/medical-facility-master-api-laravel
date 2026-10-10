@@ -7,6 +7,7 @@ use App\Enums\InstitutionType;
 use App\Models\MedicalFacility;
 use App\Models\MedicalInfoNetLocation;
 use App\Models\Municipality;
+use App\Models\NationalLandMedicalLocation;
 use App\Services\Address\FacilityMatchingKeys;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
@@ -54,7 +55,7 @@ class GeocodeMedicalFacilitiesTest extends TestCase
         ]);
 
         $this->artisan('facilities:geocode')
-            ->expectsOutputToContain('町丁目 1 / 医療情報ネット 0 / 判定不能 1')
+            ->expectsOutputToContain('町丁目 1 / 医療情報ネット 0 / 国土数値情報 0 / 判定不能 1')
             ->assertExitCode(0);
 
         $facility->refresh();
@@ -95,6 +96,33 @@ class GeocodeMedicalFacilitiesTest extends TestCase
 
         $facility->refresh();
         $this->assertSame(GeocodeLevel::MedicalInfoNet, $facility->geocode_level);
+        $this->assertSame('35.671000', $facility->latitude);
+    }
+
+    public function test_a_town_level_facility_the_medical_info_net_does_not_locate_uses_the_national_land_position(): void
+    {
+        $facility = MedicalFacility::factory()->create([
+            'prefecture_code' => '13',
+            'institution_type' => InstitutionType::Clinic,
+            'name' => '医療法人　内幸町クリニック',
+            'address' => '千代田区内幸町一丁目5番1号',
+        ]);
+        $keys = app(FacilityMatchingKeys::class);
+        NationalLandMedicalLocation::factory()->create([
+            'institution_type' => InstitutionType::Clinic,
+            'municipality_code' => '13101',
+            'name_key' => $keys->name('(医)内幸町クリニック'),
+            'address_key' => $keys->address('内幸町1丁目5番地1'),
+            'latitude' => 35.671000,
+            'longitude' => 139.751000,
+        ]);
+
+        $this->artisan('facilities:geocode')
+            ->expectsOutputToContain('町丁目 0 / 医療情報ネット 0 / 国土数値情報 1')
+            ->assertExitCode(0);
+
+        $facility->refresh();
+        $this->assertSame(GeocodeLevel::NationalLand, $facility->geocode_level);
         $this->assertSame('35.671000', $facility->latitude);
     }
 
