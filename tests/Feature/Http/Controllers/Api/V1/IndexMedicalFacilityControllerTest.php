@@ -13,6 +13,7 @@ use App\Models\MedicalFacilityOpeningPeriod;
 use App\Models\Municipality;
 use App\Models\PublicHoliday;
 use App\Services\MedicalInfoNet\OpeningPeriods;
+use ArrayObject;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -370,6 +371,57 @@ class IndexMedicalFacilityControllerTest extends TestCase
 
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors('q');
+    }
+
+    public function test_search_total_is_reused_for_ten_minutes(): void
+    {
+        MedicalFacility::factory()->create(['name' => '札幌眼科']);
+        $this->getJson('/api/v1/medical-facilities?q='.urlencode('眼科'))->assertJsonPath('meta.total', 1);
+        MedicalFacility::factory()->create(['name' => '旭川眼科']);
+
+        $cached = $this->getJson('/api/v1/medical-facilities?q='.urlencode('眼科'));
+
+        $cached->assertJsonPath('meta.total', 1);
+        $cached->assertJsonCount(2, 'data');
+
+        $this->travel(11)->minutes();
+
+        $this->getJson('/api/v1/medical-facilities?q='.urlencode('眼科'))->assertJsonPath('meta.total', 2);
+    }
+
+    public function test_paging_or_resorting_a_search_reuses_its_total(): void
+    {
+        MedicalFacility::factory()->count(3)->create(['name' => '眼科クリニック']);
+        $this->getJson('/api/v1/medical-facilities?per_page=1&q='.urlencode('眼科'));
+        $countQueries = $this->countQueries();
+
+        $response = $this->getJson('/api/v1/medical-facilities?per_page=1&page=2&sort=-updated_at&q='.urlencode('眼科'));
+
+        $response->assertOk();
+        $response->assertJsonPath('meta.total', 3);
+        $this->assertSame([], $countQueries->getArrayCopy());
+    }
+
+    public function test_searches_with_other_words_or_filters_are_counted_separately(): void
+    {
+        MedicalFacility::factory()->create(['name' => '眼科病院', 'institution_type' => InstitutionType::Hospital]);
+        MedicalFacility::factory()->create(['name' => '眼科クリニック', 'institution_type' => InstitutionType::Clinic]);
+        MedicalFacility::factory()->create(['name' => '歯科クリニック', 'institution_type' => InstitutionType::DentalClinic]);
+
+        $this->getJson('/api/v1/medical-facilities?q='.urlencode('眼科'))->assertJsonPath('meta.total', 2);
+        $this->getJson('/api/v1/medical-facilities?q='.urlencode('歯科'))->assertJsonPath('meta.total', 1);
+        $this->getJson('/api/v1/medical-facilities?institution_type=1&q='.urlencode('眼科'))->assertJsonPath('meta.total', 1);
+    }
+
+    public function test_a_nearby_search_total_is_not_cached(): void
+    {
+        $sapporo = ['name' => '札幌眼科', 'latitude' => 43.0621, 'longitude' => 141.3544];
+        MedicalFacility::factory()->create($sapporo);
+        $url = '/api/v1/medical-facilities?latitude=43.0621&longitude=141.3544&q='.urlencode('眼科');
+        $this->getJson($url)->assertJsonPath('meta.total', 1);
+        MedicalFacility::factory()->create($sapporo);
+
+        $this->getJson($url)->assertJsonPath('meta.total', 2);
     }
 
     public function test_returns_422_when_institution_type_is_not_a_valid_enum_value(): void
@@ -896,5 +948,22 @@ class IndexMedicalFacilityControllerTest extends TestCase
         ]);
 
         return $facility;
+    }
+
+    /**
+     * Collects the SQL of every count query run from now on.
+     *
+     * @return ArrayObject<int, string>
+     */
+    private function countQueries(): ArrayObject
+    {
+        $queries = new ArrayObject;
+        DB::listen(function (QueryExecuted $query) use ($queries): void {
+            if (str_contains($query->sql, 'count(')) {
+                $queries[] = $query->sql;
+            }
+        });
+
+        return $queries;
     }
 }
