@@ -44,6 +44,9 @@ services:
             DB_URL: ''
             DB_USERNAME: '${DB_READER_USERNAME:?DB_READER_USERNAME must be set in .env}'
             DB_PASSWORD: '${DB_READER_PASSWORD:?DB_READER_PASSWORD must be set in .env}'
+            # Per SELECT (config/database.php). The slowest searches take
+            # about 1s warm and 1-2s with a cold buffer pool.
+            DB_MAX_EXECUTION_TIME_MS: '${DB_MAX_EXECUTION_TIME_MS:-10000}'
             # A hostname (e.g. 203-0-113-1.sslip.io) makes Caddy serve HTTPS
             # with an automatic Let's Encrypt certificate; ":80" serves plain
             # HTTP only.
