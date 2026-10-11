@@ -116,7 +116,11 @@ class MedicalFacilityController extends Controller
     {
         return $this->applyFilters(MedicalFacility::query(), $filters)
             ->when($filters['q'] ?? null, fn ($query, $term) => $this->applySearch($query, $term))
-            ->when($openAt, fn ($query, Carbon $at) => $this->applyOpenAt($query, $at, $forCounting))
+            ->when($openAt, fn ($query, Carbon $at) => $this->applyOpenAt(
+                $query,
+                $at,
+                checksInOrder: ! $forCounting && ! isset($filters['latitude'], $filters['longitude']),
+            ))
             ->when(isset($filters['latitude'], $filters['longitude']), fn ($query) => $this->applyNearby(
                 $query,
                 (float) $filters['latitude'],
@@ -175,16 +179,20 @@ class MedicalFacilityController extends Controller
      * which took ~0.6s in production for any page. Counting visits far
      * more of them than a page does, and there collecting them first is
      * the faster way (~0.07s vs ~0.7s locally for all), so it gets no hint.
+     * Nor does a nearby search's page: every facility in the area has to be
+     * checked to find the nearest anyway, and checking them one by one made
+     * MySQL check every facility in Japan before the area (~0.23s vs ~0.03s
+     * locally for 50km around Tokyo; ~5s in production).
      *
      * @param  Builder<MedicalFacility>  $query
      * @return Builder<MedicalFacility>
      */
-    private function applyOpenAt(Builder $query, Carbon $at, bool $forCounting): Builder
+    private function applyOpenAt(Builder $query, Carbon $at, bool $checksInOrder): Builder
     {
         $moment = OpeningMoment::at($at);
 
         return $query->whereExists(fn ($periods) => $periods
-            ->selectRaw($forCounting ? '1' : '/*+ NO_SEMIJOIN() */ 1')
+            ->selectRaw($checksInOrder ? '/*+ NO_SEMIJOIN() */ 1' : '1')
             ->from('medical_facility_opening_periods')
             ->whereColumn('medical_facility_opening_periods.medical_facility_id', 'medical_facilities.id')
             ->where('day', $moment->day)

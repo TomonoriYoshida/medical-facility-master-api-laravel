@@ -864,6 +864,24 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $this->assertStringContainsString('NO_SEMIJOIN', $queries[1]);
     }
 
+    public function test_open_at_near_a_place_fetches_a_page_with_the_facilities_open_collected_first(): void
+    {
+        $open = $this->openOn(1, '09:00:00', '12:00:00');
+        $open->update(['latitude' => 35.681, 'longitude' => 139.767]);
+        $queries = [];
+        DB::listen(function (QueryExecuted $query) use (&$queries): void {
+            if (str_contains($query->sql, 'exists') && str_contains($query->sql, 'medical_facility_opening_periods')) {
+                $queries[] = $query->sql;
+            }
+        });
+
+        $response = $this->getJson('/api/v1/medical-facilities?open_at=2026-10-05T10:30&latitude=35.68&longitude=139.76&radius=50000');
+
+        $response->assertJsonPath('data.0.id', $open->id);
+        $this->assertCount(2, $queries);
+        $this->assertStringNotContainsString('NO_SEMIJOIN', implode(' ', $queries));
+    }
+
     public function test_open_at_uses_the_holiday_hours_on_a_public_holiday(): void
     {
         PublicHoliday::factory()->create(['date' => '2026-10-12', 'name' => 'スポーツの日']);
