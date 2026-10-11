@@ -55,10 +55,13 @@ final class FacilityGeocoder
             }
 
             $at = fn (array $positions, ?string $key): ?array => $key === null ? null : ($positions[$key] ?? null);
+            // Residence and parcel keys both exist only for a 町字 listed with
+            // both rsdt_addr_flg values; there a match of both numbers beats
+            // a 街区 that only shares the first.
             $candidates = [
                 [GeocodeLevel::Residence, $at($residencePositions, $target['residence'])],
-                [GeocodeLevel::Block, $at($blockPositions, $target['block'])],
                 [GeocodeLevel::Parcel, $at($parcelPositions, $target['parcel'])],
+                [GeocodeLevel::Block, $at($blockPositions, $target['block'])],
                 [GeocodeLevel::ParcelBase, $at($parcelBasePositions, $target['parcel_base'])],
                 [GeocodeLevel::Town, $at($townPositions, $target['town'])],
                 [GeocodeLevel::Town, $at($townPositions, $target['parent_town'])],
@@ -119,7 +122,7 @@ final class FacilityGeocoder
             }
 
             if (($row['ablt_date'] ?? '') === '' && isset($remaindersByMunicipality[substr($currentLgCode, 0, 5)])) {
-                $towns[] = array_intersect_key($row, array_flip(['machiaza_id', 'oaza_cho', 'chome_number', 'koaza', 'rsdt_addr_flg']));
+                $towns[] = array_intersect_key($row, array_flip(['machiaza_id', 'oaza_cho', 'chome', 'chome_number', 'koaza', 'rsdt_addr_flg']));
             }
         }
 
@@ -152,7 +155,6 @@ final class FacilityGeocoder
 
             [$first, $second] = $this->banchiParser->parse($town['rest']) ?? [null, null];
             $townKey = $this->key($lgCode, $town['id']);
-            $residential = $town['residential'];
 
             // 小字 rarely have a position of their own; their 大字 (same first
             // four digits of machiaza_id, then 000) usually does.
@@ -162,10 +164,10 @@ final class FacilityGeocoder
                 'lg_code' => $lgCode,
                 'town' => $townKey,
                 'parent_town' => $parentTownKey !== $townKey ? $parentTownKey : null,
-                'residence' => $residential && $second !== null ? $this->key($townKey, $first, $second) : null,
-                'block' => $residential && $first !== null ? $this->key($townKey, $first) : null,
-                'parcel' => ! $residential && $second !== null ? $this->key($townKey, $first, $second) : null,
-                'parcel_base' => ! $residential && $first !== null ? $this->key($townKey, $first) : null,
+                'residence' => $town['residential'] && $second !== null ? $this->key($townKey, $first, $second) : null,
+                'block' => $town['residential'] && $first !== null ? $this->key($townKey, $first) : null,
+                'parcel' => $town['parcel'] && $second !== null ? $this->key($townKey, $first, $second) : null,
+                'parcel_base' => $town['parcel'] && $first !== null ? $this->key($townKey, $first) : null,
             ];
         }
     }

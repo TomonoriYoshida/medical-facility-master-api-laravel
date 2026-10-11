@@ -17,28 +17,51 @@ use App\Services\Address\AddressMatchingNormalizer;
  *   ("長野市桜枝町" for 大字長野字桜枝町)
  * - 丁目 omitted before a hyphenated number ("九段南1-6-5" for
  *   九段南一丁目6番5号)
+ * - 丁目 written "丁" where the registry does so too (Sakai's "桃山台２丁"
+ *   is written "桃山台二丁3番4号")
+ *
+ * A 町字 where 住居表示 covers only part of the area is listed twice, once
+ * with rsdt_addr_flg 1 and once with 0; its numbers are then looked up both
+ * as 街区・住居 and as 地番.
+ *
+ * @phpstan-type Town array{id: string, residential: bool, parcel: bool}
+ * @phpstan-type TownMatch array{id: string, residential: bool, parcel: bool, rest: string}
  */
 final class TownMatcher
 {
-    /** @var array<string, array{id: string, residential: bool}> spelling => 町字, longest spelling first */
+    /** @var array<string, Town> spelling => 町字, longest spelling first */
     private array $names = [];
 
-    /** @var array<string, array<string, array{id: string, residential: bool}>> 大字・町名 => 丁目 => 町字 */
+    /** @var array<string, array<string, Town>> 大字・町名 => 丁目 => 町字 */
     private array $chomes = [];
 
-    /** @var array<string, list<array{id: string, residential: bool}>> 小字 => 町字 */
+    /** @var array<string, true> 大字・町名 whose 丁目 the registry writes "N丁" */
+    private array $choSpellings = [];
+
+    /** @var array<string, array<string, Town>> 小字 => 町字 by id */
     private array $koazas = [];
 
     /**
-     * @param  iterable<array<string, string>>  $towns  mt_town rows of one municipality
+     * @param  list<array<string, string>>  $towns  mt_town rows of one municipality
      */
-    public function __construct(iterable $towns, AddressMatchingNormalizer $normalizer)
+    public function __construct(array $towns, private readonly AddressMatchingNormalizer $normalizer)
     {
-        /** @var array<string, array<string, array{id: string, residential: bool}>> spelling with the 小字 left out => 町字 by id */
+        /** @var array<string, array{residential?: true, parcel?: true}> machiaza_id => which rsdt_addr_flg it is listed with */
+        $flags = [];
+
+        foreach ($towns as $town) {
+            $flags[$town['machiaza_id']][$town['rsdt_addr_flg'] === '1' ? 'residential' : 'parcel'] = true;
+        }
+
+        /** @var array<string, array<string, Town>> spelling with the 小字 left out => 町字 by id */
         $withoutKoaza = [];
 
         foreach ($towns as $town) {
-            $entry = ['id' => $town['machiaza_id'], 'residential' => $town['rsdt_addr_flg'] === '1'];
+            $entry = [
+                'id' => $town['machiaza_id'],
+                'residential' => isset($flags[$town['machiaza_id']]['residential']),
+                'parcel' => isset($flags[$town['machiaza_id']]['parcel']),
+            ];
             // Some prefectures (e.g. Okinawa) write 大字 as "字豊見城".
             $oaza = (string) preg_replace('/^(大字|字)/u', '', $normalizer->normalize($town['oaza_cho']));
             $koaza = (string) preg_replace('/^字/u', '', $normalizer->normalize($town['koaza']));
@@ -49,11 +72,15 @@ final class TownMatcher
             if ($koaza !== '') {
                 $this->names[$oaza.$chome.'字'.$koaza] ??= $entry;
                 $withoutKoaza[$oaza.$chome][$entry['id']] = $entry;
-                $this->koazas[$koaza][] = $entry;
+                $this->koazas[$koaza][$entry['id']] = $entry;
             }
 
             if ($town['chome_number'] !== '') {
                 $this->chomes[$oaza][$town['chome_number']] ??= $entry;
+
+                if (preg_match('/丁$/u', $normalizer->normalize($town['chome'])) === 1) {
+                    $this->choSpellings[$oaza] = true;
+                }
             }
         }
 
@@ -71,7 +98,7 @@ final class TownMatcher
 
     /**
      * @param  string  $remainder  the address after the municipality name, in AddressMatchingNormalizer's spelling
-     * @return array{id: string, residential: bool, rest: string}|null
+     * @return TownMatch|null
      */
     public function match(string $remainder): ?array
     {
@@ -85,7 +112,7 @@ final class TownMatcher
     }
 
     /**
-     * @return array{id: string, residential: bool, rest: string}|null
+     * @return TownMatch|null
      */
     private function matchTown(string $remainder): ?array
     {
@@ -95,8 +122,25 @@ final class TownMatcher
         // often also listed bare (広小路 next to 広小路一丁目, ...), and
         // "広小路5-10" means 五丁目10, not 広小路 5番地.
         foreach ($this->chomes as $oaza => $chomes) {
-            if (str_starts_with($remainder, $oaza) && preg_match('/^\s*(\d+)-/u', substr($remainder, strlen($oaza)), $matches) === 1 && isset($chomes[$matches[1]])) {
-                return [...$chomes[$matches[1]], 'rest' => substr($remainder, strlen($oaza) + strlen($matches[0]))];
+            if (! str_starts_with($remainder, $oaza)) {
+                continue;
+            }
+
+            $afterOaza = substr($remainder, strlen($oaza));
+
+            if (preg_match('/^\s*(\d+)-/u', $afterOaza, $matches) === 1 && isset($chomes[$matches[1]])) {
+                return [...$chomes[$matches[1]], 'rest' => substr($afterOaza, strlen($matches[0]))];
+            }
+
+            // "二丁3番4号": AddressMatchingNormalizer turns only "二丁目" into
+            // digits. A number must follow, so that a town named like "西一丁田"
+            // is not read as 西一丁 + 田. A 丁 the town does not have
+            // ("九丁3番4号") matches nothing rather than falling back to the
+            // bare town, where "九丁" would be skipped as an unlisted 小字.
+            if (isset($this->choSpellings[$oaza]) && preg_match('/^\s*(\d+|[〇一二三四五六七八九十]+)丁(?=\s*\d)/u', $afterOaza, $matches) === 1) {
+                $number = ctype_digit($matches[1]) ? (ltrim($matches[1], '0') ?: '0') : $this->normalizer->kanjiToNumber($matches[1]);
+
+                return isset($chomes[$number]) ? [...$chomes[$number], 'rest' => substr($afterOaza, strlen($matches[0]))] : null;
             }
         }
 
@@ -108,7 +152,7 @@ final class TownMatcher
 
         foreach ($this->koazas as $koaza => $towns) {
             if (count($towns) === 1 && str_starts_with($remainder, $koaza)) {
-                return [...$towns[0], 'rest' => substr($remainder, strlen($koaza))];
+                return [...reset($towns), 'rest' => substr($remainder, strlen($koaza))];
             }
         }
 

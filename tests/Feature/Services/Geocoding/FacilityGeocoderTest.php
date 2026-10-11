@@ -35,6 +35,9 @@ class FacilityGeocoderTest extends TestCase
                 $this->abrTown('131016', '0020000', '大字北堀'),
                 $this->abrTown('131016', '0030000', '神明'),
                 $this->abrTown('131016', '0030104', '神明', koaza: '宮北'),
+                // 住居表示 covers only part of 岡三丁目.
+                $this->abrTown('131016', '0040003', '岡', chome: '3', residential: true),
+                $this->abrTown('131016', '0040003', '岡', chome: '3'),
                 // Same machiaza_id as 神田神保町二丁目, in another municipality.
                 $this->abrTown('132055', '0012002', '新町', chome: '2'),
             ],
@@ -47,10 +50,12 @@ class FacilityGeocoderTest extends TestCase
             'mt_rsdtdsp_blk/pref/mt_rsdtdsp_blk_pref13.csv.zip' => [
                 ['lg_code' => '131016', 'machiaza_id' => '0001001', 'blk_id' => '001', 'blk_num' => '1', 'ablt_date' => ''],
                 ['lg_code' => '131016', 'machiaza_id' => '0001001', 'blk_id' => '002', 'blk_num' => '2', 'ablt_date' => ''],
+                ['lg_code' => '131016', 'machiaza_id' => '0040003', 'blk_id' => '008', 'blk_num' => '8', 'ablt_date' => ''],
             ],
             'mt_rsdtdsp_blk_pos/pref/mt_rsdtdsp_blk_pos_pref13.csv.zip' => [
                 $this->abrPosition(['lg_code' => '131016', 'machiaza_id' => '0001001', 'blk_id' => '001'], 35.6711, 139.7511),
                 $this->abrPosition(['lg_code' => '131016', 'machiaza_id' => '0001001', 'blk_id' => '002'], 35.6712, 139.7512),
+                $this->abrPosition(['lg_code' => '131016', 'machiaza_id' => '0040003', 'blk_id' => '008'], 35.6808, 139.7608),
             ],
             'mt_rsdtdsp_rsdt/pref/mt_rsdtdsp_rsdt_pref13.csv.zip' => [
                 ['lg_code' => '131016', 'machiaza_id' => '0001001', 'blk_id' => '001', 'rsdt_id' => '003', 'rsdt2_id' => '', 'blk_num' => '1', 'rsdt_num' => '3', 'ablt_date' => ''],
@@ -61,9 +66,13 @@ class FacilityGeocoderTest extends TestCase
             'mt_parcel/city/mt_parcel_city131016.csv.zip' => [
                 ['lg_code' => '131016', 'machiaza_id' => '0012002', 'prc_id' => '000320000100000', 'prc_num1' => '32', 'prc_num2' => '1', 'ablt_date' => ''],
                 ['lg_code' => '131016', 'machiaza_id' => '0012002', 'prc_id' => '000320001100000', 'prc_num1' => '32', 'prc_num2' => '11', 'ablt_date' => ''],
+                ['lg_code' => '131016', 'machiaza_id' => '0040003', 'prc_id' => '005000000100000', 'prc_num1' => '500', 'prc_num2' => '1', 'ablt_date' => ''],
+                ['lg_code' => '131016', 'machiaza_id' => '0040003', 'prc_id' => '000080000100000', 'prc_num1' => '8', 'prc_num2' => '1', 'ablt_date' => ''],
             ],
             'mt_parcel_pos/city/mt_parcel_pos_city131016.csv.zip' => [
                 $this->abrPosition(['lg_code' => '131016', 'machiaza_id' => '0012002', 'prc_id' => '000320000100000'], 35.6961, 139.7581),
+                $this->abrPosition(['lg_code' => '131016', 'machiaza_id' => '0040003', 'prc_id' => '005000000100000'], 35.6850, 139.7650),
+                $this->abrPosition(['lg_code' => '131016', 'machiaza_id' => '0040003', 'prc_id' => '000080000100000'], 35.6870, 139.7670),
             ],
             'mt_parcel/city/mt_parcel_city132055.csv.zip' => [
                 ['lg_code' => '132055', 'machiaza_id' => '0012002', 'prc_id' => '000320001100000', 'prc_num1' => '32', 'prc_num2' => '11', 'ablt_date' => ''],
@@ -98,6 +107,20 @@ class FacilityGeocoderTest extends TestCase
         $this->assertNull($results[7]);
         // A 小字 without a position of its own falls back to its 大字's.
         $this->assertEquals(new GeocodeResult(GeocodeLevel::Town, 35.6800, 139.7300), $results[8]);
+    }
+
+    public function test_a_town_partly_under_residential_addressing_is_located_by_block_or_parcel(): void
+    {
+        $results = app(FacilityGeocoder::class)->geocode(Prefecture::Tokyo, [
+            1 => '千代田区岡三丁目8番8号',
+            2 => '千代田区岡三丁目500番地1',
+            3 => '千代田区岡三丁目8番地1',
+        ]);
+
+        $this->assertEquals(new GeocodeResult(GeocodeLevel::Block, 35.6808, 139.7608), $results[1]);
+        $this->assertEquals(new GeocodeResult(GeocodeLevel::Parcel, 35.6850, 139.7650), $results[2]);
+        // Both numbers match the 地番 8-1; only the first matches 街区 8.
+        $this->assertEquals(new GeocodeResult(GeocodeLevel::Parcel, 35.6870, 139.7670), $results[3]);
     }
 
     public function test_a_parcel_of_another_municipality_with_the_same_town_id_is_not_used(): void
