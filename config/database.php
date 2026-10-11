@@ -3,6 +3,8 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
+$maxExecutionMilliseconds = (int) env('DB_MAX_EXECUTION_TIME_MS', 0);
+
 return [
 
     /*
@@ -61,6 +63,13 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                // Caps each SELECT at this many milliseconds, so slow queries
+                // cannot pile up. Set only in compose's app service (the web
+                // server and the commands run in it); imports and exports,
+                // which read for minutes, run in worker and scheduler.
+                Mysql::ATTR_INIT_COMMAND => $maxExecutionMilliseconds > 0
+                    ? "SET SESSION max_execution_time = {$maxExecutionMilliseconds}"
+                    : null,
             ]) : [],
         ],
 

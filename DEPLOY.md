@@ -170,13 +170,14 @@ cd ~
 git clone https://github.com/TomonoriYoshida/open-clinic-finder.git
 cd open-clinic-finder
 docker run --rm --network host -u "$(id -u):$(id -g)" -e npm_config_cache=/tmp/.npm \
-  -v "$PWD":/app -w /app node:22-alpine sh -c 'npm ci --no-audit --no-fund && npm run build'
+  -v "$PWD":/app -w /app node:22-alpine sh -c 'npm ci --ignore-scripts --no-audit --no-fund && npm run build'
 cd ~/medical-facility-master-api-laravel
 docker compose up -d app   # マウントを追加した初回だけ必要
 ```
 
 - 本番のビルドでは `NEXT_PUBLIC_API_ORIGIN` を設定しません。サイトは同じオリジンの `/api` を呼び出します。
 - `--network host`: Docker の既定のネットワークでは npm レジストリからの取得が極端に遅くなることがあります。
+- `--ignore-scripts`: パッケージのインストール時スクリプトをこのサーバーで実行しません（乗っ取られたパッケージの典型的な手口）。ビルドに必要なものはありません（スクリプトを持つのは ESLint 用の `unrs-resolver` だけです）。
 - 更新するときは `git pull` してから同じ `docker run` を実行します。`out/` が書き換わった時点で反映され、app コンテナの再起動は不要です（ビルド中の数十秒は `/` が API 仕様書へ転送されます）。
 - ページには Content-Security-Policy などのヘッダーを付けています（`compose.production.yaml` の `CADDY_SERVER_EXTRA_DIRECTIVES`）。地図タイルや住所検索の接続先を増やすときは、そこも変更します。
 
@@ -821,4 +822,5 @@ docker compose up -d
 
 - **ファイアウォール**: Docker が公開したポートは、Ubuntu の ufw の設定を経由せずに外部から到達できます。この構成で公開しているのは 80 / 443 だけ（MySQL は公開していない）ですが、`compose.production.yaml` にポートを追加するときは注意してください。
 - **レート制限**: API は IP アドレスごとに1分60回です（`API_RATE_LIMIT_PER_MINUTE`）。仕様書（`/docs/api`）は1分30回（`DOCS_RATE_LIMIT_PER_MINUTE`）、一括ダウンロードのファイルは1時間30回（`EXPORT_DOWNLOADS_PER_HOUR`）です。集計API（`/stats/*`）は、キャッシュになく集計し直す呼び出しだけを、さらに1分30回に制限します（`STATS_COMPUTATIONS_PER_MINUTE`）。この構成では app コンテナが直接接続を受けるため、利用者の IP アドレスがそのまま使われます。将来 Cloudflare のプロキシなどを前段に置く場合は、`bootstrap/app.php` で `trustProxies` を設定しないと、全利用者が同じ IP として扱われます。
+- **検索の時間の上限**: app（Web）からの SELECT は、1回10秒で打ち切ります（`DB_MAX_EXECUTION_TIME_MS`）。遅い問い合わせが積み重なってデータベースが詰まるのを防ぐためで、いちばん遅い検索でも1秒ほど（再起動の直後は1〜2秒）です。打ち切られた API は `500`（「検索に時間がかかりすぎたため、中止しました。」）を返し、ログに残ります。取込や書き出しは worker・scheduler で動くため、上限はかかりません。`docker compose exec app` で実行するコマンドには上限がかかるので、時間のかかる集計は scheduler で実行します。
 - **MySQL のメモリ**: `MYSQL_INNODB_BUFFER_POOL_SIZE` は 512MB 以上にしてください。これを下回ると、検索のたびにディスク読み込みが発生し、応答が 1〜2秒に遅くなります。メモリに余裕があるサーバーでは増やしてもかまいません。

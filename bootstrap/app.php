@@ -4,6 +4,7 @@ use App\Http\Middleware\BlockScanners;
 use App\Http\Middleware\SetSecurityHeaders;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -57,5 +58,12 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(fn (HttpExceptionInterface $e, Request $request) => $request->is('api/*') && isset($messages[$e->getStatusCode()])
             ? response()->json(['message' => $messages[$e->getStatusCode()]], $e->getStatusCode(), $e->getHeaders())
+            : null);
+
+        // A SELECT stopped by max_execution_time (DB_MAX_EXECUTION_TIME_MS):
+        // MySQL reports 3024, or 1028 / 1317 when it stops in a sort or
+        // another phase. Not 503, which the frontends read as maintenance.
+        $exceptions->render(fn (QueryException $e, Request $request) => $request->is('api/*') && in_array($e->errorInfo[1] ?? null, [3024, 1028, 1317], true)
+            ? response()->json(['message' => '検索に時間がかかりすぎたため、中止しました。条件を絞って、もう一度お試しください。'], 500)
             : null);
     })->create();
