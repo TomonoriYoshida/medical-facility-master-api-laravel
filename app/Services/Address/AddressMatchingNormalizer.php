@@ -34,7 +34,7 @@ final class AddressMatchingNormalizer
      * Kanji numerals as used for 丁目 (up to 九十九): "十" alone is 10,
      * "二十" 20, "二十三" 23.
      */
-    private function kanjiToNumber(string $kanji): string
+    public function kanjiToNumber(string $kanji): string
     {
         $total = 0;
         $digit = 0;

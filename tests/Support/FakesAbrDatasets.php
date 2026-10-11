@@ -83,13 +83,16 @@ trait FakesAbrDatasets
     }
 
     /**
+     * @param  string  $chome  the 丁目 number
+     * @param  string  $chomeSuffix  how the registry writes 丁目 after the number ("丁" in Sakai)
      * @return array<string, string>
      */
-    private function abrTown(string $lgCode, string $machiazaId, string $oaza, string $chome = '', string $koaza = '', bool $residential = false): array
+    private function abrTown(string $lgCode, string $machiazaId, string $oaza, string $chome = '', string $koaza = '', bool $residential = false, string $chomeSuffix = '丁目'): array
     {
         return [
             'lg_code' => $lgCode, 'machiaza_id' => $machiazaId, 'oaza_cho' => $oaza,
-            'chome_number' => $chome, 'koaza' => $koaza, 'rsdt_addr_flg' => $residential ? '1' : '0', 'ablt_date' => '',
+            'chome' => $chome !== '' ? $chome.$chomeSuffix : '', 'chome_number' => $chome,
+            'koaza' => $koaza, 'rsdt_addr_flg' => $residential ? '1' : '0', 'ablt_date' => '',
         ];
     }
 
