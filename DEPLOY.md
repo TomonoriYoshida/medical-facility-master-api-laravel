@@ -103,15 +103,20 @@ cp .env.production.example .env
 | `SERVER_NAME` | サーバーの IP アドレスの `.` を `-` に置き換えたもの + `.sslip.io`（例: IP が `203.0.113.1` なら `203-0-113-1.sslip.io`） |
 | `APP_URL` | `https://` + `SERVER_NAME` の値 |
 | `APP_KEY` | `echo "base64:$(openssl rand -base64 32)"` の出力 |
-| `DB_PASSWORD` / `DB_ROOT_PASSWORD` | それぞれ `openssl rand -hex 24` の出力 |
+| `DB_PASSWORD` / `DB_READER_PASSWORD` / `DB_ROOT_PASSWORD` | それぞれ `openssl rand -hex 24` の出力 |
 
 `.env` の `COMPOSE_FILE` により、以降の `docker compose` は本番用の定義を使います。
 
 ```bash
 docker compose build                    # 初回は数分かかる
-docker compose run --rm app php artisan migrate --force
-docker compose run --rm app php artisan db:seed --class=KanjiVariantSeeder --force
-docker compose run --rm app php artisan db:seed --class=MunicipalitySeeder --force
+docker compose run --rm scheduler php artisan migrate --force
+```
+
+続けて、Web 用のデータベースユーザーを作ります（「3. 更新のデプロイ」の「Web 用のデータベースユーザー」の、`CREATE USER` と `GRANT` のコードブロックだけ）。
+
+```bash
+docker compose run --rm scheduler php artisan db:seed --class=KanjiVariantSeeder --force
+docker compose run --rm scheduler php artisan db:seed --class=MunicipalitySeeder --force
 docker compose up -d
 ```
 
@@ -121,12 +126,12 @@ docker compose up -d
 
 ```bash
 docker compose exec scheduler php artisan rhb:download
-docker compose exec app php artisan rhb:import --wait
-docker compose exec app php artisan medical-info-net:import   # 医療情報ネットの座標（約20秒）
-docker compose exec app php artisan national-land:import      # 国土数値情報の位置（約1分）
-docker compose exec app php artisan population:import         # 市区町村別の人口（数秒）
-docker compose exec app php artisan facilities:geocode   # 座標を付与
-docker compose exec app php artisan rhb:export        # 一括ダウンロードのファイルを作成
+docker compose exec scheduler php artisan rhb:import --wait
+docker compose exec scheduler php artisan medical-info-net:import   # 医療情報ネットの座標（約20秒）
+docker compose exec scheduler php artisan national-land:import      # 国土数値情報の位置（約1分）
+docker compose exec scheduler php artisan population:import         # 市区町村別の人口（数秒）
+docker compose exec scheduler php artisan facilities:geocode   # 座標を付与
+docker compose exec scheduler php artisan rhb:export        # 一括ダウンロードのファイルを作成
 ```
 
 - `facilities:geocode` は、初回にアドレス・ベース・レジストリのファイルを取得します全国で約3.4GB、初回は1時間前後。翌日以降は新規・移転した施設だけを処理します（全国に散らばった200件で約8分。対象の施設がない日はすぐ終わります）。PHP の既定のメモリ上限（128MB）で動きます。ファイルは `storage-app` ボリュームに残り、翌日以降は変わったものだけを取得します。
@@ -181,12 +186,51 @@ docker compose up -d app   # マウントを追加した初回だけ必要
 cd medical-facility-master-api-laravel
 git pull
 docker compose build
-docker compose run --rm app php artisan migrate --force
+docker compose run --rm scheduler php artisan migrate --force
 docker compose up -d
 ```
 
 - worker は、実行中のジョブが終わるまで最大10分待ってから停止します（`stop_grace_period`）。取込の時間帯（05:00〜06:00 頃）を避けると、すぐに切り替わります。
 - 設定（config）とルートのキャッシュは、コンテナの起動時に作り直されます。`.env` を変えた場合も `docker compose up -d` で反映されます。
+
+### Web 用のデータベースユーザー
+
+app（Web）は、読み取りと `cache` テーブル（レート制限・集計のキャッシュ・メンテナンスモード）への書き込みだけができるユーザー（`DB_READER_USERNAME`）で接続します。リクエストの処理に欠陥があっても、施設や変更履歴などのデータは書き換えも削除もできません（`cache` は書けるため、メンテナンスモードやキャッシュした値は変えられます）。worker・scheduler と、取込や migrate などデータを書き換えるコマンド（`docker compose exec scheduler` / `run --rm scheduler`）は、`DB_USERNAME` で接続します。root のパスワードは mysql 以外のコンテナには渡しません。
+
+新しいサーバーと、この仕組みを含む版へ初めて更新するときに、一度だけ実行します。`.env` に次の2行を追加してから（`.env.production.example` と同じ）、
+
+```
+DB_READER_USERNAME=app_reader
+DB_READER_PASSWORD=<openssl rand -hex 24 の出力>
+```
+
+ユーザーを作ります。
+
+```bash
+cd ~/medical-facility-master-api-laravel
+DB_NAME=$(grep '^DB_DATABASE=' .env | cut -d= -f2-)
+READER_USER=$(grep '^DB_READER_USERNAME=' .env | cut -d= -f2-)
+READER_PASSWORD=$(grep '^DB_READER_PASSWORD=' .env | cut -d= -f2-)
+
+docker compose exec -T mysql sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD"' <<SQL
+CREATE USER '${READER_USER}'@'%' IDENTIFIED BY '${READER_PASSWORD}';
+GRANT SELECT ON \`${DB_NAME}\`.* TO '${READER_USER}'@'%';
+GRANT INSERT, UPDATE, DELETE ON \`${DB_NAME}\`.\`cache\` TO '${READER_USER}'@'%';
+SQL
+```
+
+続けて、コンテナに反映して確かめます（初回デプロイでは、この先は「2. 初回デプロイ」の続きの `up -d` で行います）。
+
+```bash
+docker compose up -d
+docker compose exec app printenv DB_USERNAME            # app_reader
+docker compose exec app printenv DB_ROOT_PASSWORD       # 空
+curl -fsS "https://<SERVER_NAME>/api/v1/medical-facilities?per_page=1" | head -c 200
+```
+
+- `SELECT` はデータベース全体に付けるため、migrate でテーブルが増えても付け直す必要はありません。
+- Web のリクエストが `cache` 以外のテーブルに書き込むと、本番では権限のエラー（500）になります。`tests/Feature/Http/WebRequestDatabaseWritesTest.php` がこれを確かめます。Web で書き込みが必要になったら、このテストと上の `GRANT` の両方を見直します。
+- ログの確認、`down` / `up`、`rhb:status` など、読み取りと `cache` だけで済むコマンドは app でも実行できます。
 
 ### メンテナンス中の表示
 
@@ -198,7 +242,7 @@ docker compose exec app php artisan down
 docker compose exec app php artisan up
 ```
 
-- 状態はデータベース（キャッシュのテーブル）に保存されるため、作業中に `docker compose up -d` でコンテナを作り直しても続きます。app が止まっているときは `exec` の代わりに `docker compose run --rm app php artisan up` を使います。
+- 状態はデータベース（キャッシュのテーブル）に保存されるため、作業中に `docker compose up -d` でコンテナを作り直しても続きます。app が止まっているときは `exec` の代わりに `docker compose run --rm scheduler php artisan up` を使います。
 - メンテナンス中は、worker は取込ジョブを実行せず、scheduler も毎日の処理を実行しません。**作業が終わったら、必ず `up` を実行します。**
 - 一般向けサイトのページ（`/`）は Caddy が配信するため、メンテナンス中も開けます。API 仕様書（`/docs/api`）は `503` になります。
 - `docker compose up -d` でコンテナを作り直す数秒〜十数秒は、メンテナンスモードに関係なくサーバーにつながりません。この間、デモ用は「APIに接続できませんでした」と表示し、一般向けサイトはページ自体が開けません。
@@ -214,9 +258,9 @@ docker compose exec app php artisan up
 市区町村コードの機能を含む版へ初めて更新するとき、および `database/seeders/data/municipalities.csv` を更新した版をデプロイしたときは、`migrate` の後に次を実行します。
 
 ```bash
-docker compose run --rm app php artisan db:seed --class=MunicipalitySeeder --force
-docker compose run --rm app php artisan facilities:assign-municipalities
-docker compose run --rm app php artisan rhb:export --force
+docker compose run --rm scheduler php artisan db:seed --class=MunicipalitySeeder --force
+docker compose run --rm scheduler php artisan facilities:assign-municipalities
+docker compose run --rm scheduler php artisan rhb:export --force
 ```
 
 - `facilities:assign-municipalities` は施設の `updated_at` を変えないため、毎日の `rhb:export` は「データが変わっていない」と判断して一括ダウンロードを作り直しません。`--force` で作り直して、ファイルにも市区町村の列を反映させます。
@@ -226,7 +270,7 @@ docker compose run --rm app php artisan rhb:export --force
 人口の機能を含む版へ初めて更新したときは、`migrate` の後に次を実行します（数秒）。以降は scheduler が毎月3日に新しい版を確認します。
 
 ```bash
-docker compose run --rm app php artisan population:import
+docker compose run --rm scheduler php artisan population:import
 ```
 
 ### 座標の付与（初回）
@@ -234,8 +278,8 @@ docker compose run --rm app php artisan population:import
 座標の機能を含む版へ初めて更新したときは、`migrate` の後に次を実行します（所要時間とディスクは「初回のデータ取込」の注記を参照）。座標が変わった施設は `updated_at` が更新されるため、一括ダウンロードは翌朝の `rhb:export` で自動的に作り直されます。すぐに反映する場合は `rhb:export` も実行します。
 
 ```bash
-docker compose run --rm app php artisan medical-info-net:import
-docker compose run --rm app php artisan facilities:geocode
+docker compose run --rm scheduler php artisan medical-info-net:import
+docker compose run --rm scheduler php artisan facilities:geocode
 ```
 
 - 以降は scheduler が毎日 06:30 に、新規・移転した施設だけを処理します。
@@ -246,7 +290,7 @@ docker compose run --rm app php artisan facilities:geocode
 国土数値情報の位置を使う版へ初めて更新したときは、`migrate` の後に次を一度だけ実行します（全国で約1分。2020年度のデータで更新されないため、定期実行はしません）。
 
 ```bash
-docker compose run --rm app php artisan national-land:import
+docker compose run --rm scheduler php artisan national-land:import
 ```
 
 - 座標が町丁目・なしの施設が、次の 06:30 の `facilities:geocode` で付け直す対象になります（`updated_at` は座標が実際に変わった施設だけ動きます）。すぐに反映する場合は `facilities:geocode` も実行します。
@@ -256,7 +300,7 @@ docker compose run --rm app php artisan national-land:import
 診療時間の機能を含む版へ初めて更新したときは、`migrate` の後に次を実行します（全国で数分）。取り込み済みの版でも、施設IDと診療時間を入れるために `--force` で取り込み直します。以降は scheduler が毎月2日に新しい版を確認します。
 
 ```bash
-docker compose run --rm app php artisan medical-info-net:import --force
+docker compose run --rm scheduler php artisan medical-info-net:import --force
 ```
 
 - 取り込み直すと、座標が町丁目・医療情報ネット・国土数値情報・なしの施設が、次の 06:30 の `facilities:geocode` で付け直す対象になります（`updated_at` は座標が実際に変わった施設だけ動きます）。
@@ -266,8 +310,8 @@ docker compose run --rm app php artisan medical-info-net:import --force
 `open_at` と祝日の機能を含む版へ初めて更新したときは、`migrate` の後に次を実行します（照合は全国で数分）。以降は scheduler が、祝日を毎月4日に、照合を毎朝 06:50 に行います。
 
 ```bash
-docker compose run --rm app php artisan holidays:import
-docker compose run --rm app php artisan facilities:assign-opening-hours
+docker compose run --rm scheduler php artisan holidays:import
+docker compose run --rm scheduler php artisan facilities:assign-opening-hours
 ```
 
 - 照合するまで、診療時間のAPIはすべての施設で `data: null` を返し、`open_at` には何も当てはまりません。`migrate` の直後に続けて実行してください。
@@ -277,9 +321,9 @@ docker compose run --rm app php artisan facilities:assign-opening-hours
 外字の置き換えを含む版へ初めて更新したときは、`migrate` の後に次を実行します。取り込み直しは全国で20分ほどかかるため、朝の定期実行（05:00〜07:15）を避けます。
 
 ```bash
-docker compose run --rm app php artisan rhb:import --force --wait
-docker compose run --rm app php artisan medical-info-net:import --force
-docker compose run --rm app php artisan facilities:assign-opening-hours --force
+docker compose run --rm scheduler php artisan rhb:import --force --wait
+docker compose run --rm scheduler php artisan medical-info-net:import --force
+docker compose run --rm scheduler php artisan facilities:assign-opening-hours --force
 ```
 
 - `rhb:import --force` は、外字を含む施設（名前約360件・住所約60件、個人名を含めると約4,500件）を「再処理」の変更として記録し、`updated_at` を動かします。一括ダウンロードは翌朝の `rhb:export` で作り直されます。
@@ -290,7 +334,7 @@ docker compose run --rm app php artisan facilities:assign-opening-hours --force
 病床数の読み取りを直した版へ初めて更新したときは、`migrate` の後に次を実行します。全国で20分ほどかかるため、朝の定期実行（05:00〜07:15）を避けます。
 
 ```bash
-docker compose run --rm app php artisan rhb:import --force --wait
+docker compose run --rm scheduler php artisan rhb:import --force --wait
 ```
 
 - 病床の種別に空白が入っていた施設（`"一般    "` など、約2,200件）と、病棟ごとに分けて載っている病床を最後の1行しか数えていなかった施設（約70件）の `bed_counts` が直ります。ローカルでは2,294件が「再処理」の変更として記録され、`updated_at` が動きました。一括ダウンロードは翌朝の `rhb:export` で作り直されます。
@@ -351,9 +395,9 @@ docker compose ps                              # 各コンテナの状態
 docker compose logs -f worker                  # 取込ジョブのログ（直近。過去の分は「7. ログ」）
 docker compose exec app php artisan rhb:status     # 局・カテゴリごとの取込状況
 docker compose exec app php artisan queue:failed   # 失敗したジョブ
-docker compose exec app php artisan rhb:import --force --wait   # 取込をやり直す
-docker compose exec app php artisan rhb:prune --dry-run         # 範囲（RHB_PREFECTURES / RHB_CATEGORIES）を狭めた後、範囲外のデータを確認
-docker compose exec app php artisan rhb:prune                   # 確認のうえ削除
+docker compose exec scheduler php artisan rhb:import --force --wait   # 取込をやり直す
+docker compose exec scheduler php artisan rhb:prune --dry-run         # 範囲（RHB_PREFECTURES / RHB_CATEGORIES）を狭めた後、範囲外のデータを確認
+docker compose exec scheduler php artisan rhb:prune                   # 確認のうえ削除
 ```
 
 ## 6. 監視
@@ -694,7 +738,7 @@ git に入れてしまった秘密情報は、履歴から消しても、すで�
 | SSH 鍵 | 手元の `~/.ssh/id_ed25519` | サーバーへのログイン、GitHub への push |
 | OCI の API キー | 手元の `~/.oci/` | インスタンスの操作・削除、有料のリソースの作成 |
 | GitHub の認証（gh CLI のトークン） | 手元の `~/.config/gh/` | リポジトリの書き換え（ワークフローに手を入れられると、フロントエンドの公開内容も変えられる） |
-| `DB_PASSWORD` / `DB_ROOT_PASSWORD` | サーバーの `.env` | データベースの読み書き。MySQL は外部に公開していないため、使うにはサーバーの中に入る必要がある |
+| `DB_PASSWORD` / `DB_READER_PASSWORD` / `DB_ROOT_PASSWORD` | サーバーの `.env` | データベースの読み書き（`DB_READER_PASSWORD` は読み取りとキャッシュだけ）。MySQL は外部に公開していないため、使うにはサーバーの中に入る必要がある |
 | `APP_KEY` | サーバーの `.env` | セッションや署名付き URL の偽造。このアプリは暗号化したデータを保存していない |
 | `LOG_ALERT_WEBHOOK_URL` | サーバーの `.env` | 通知先のチャンネルへの偽の通知 |
 | healthchecks.io の ping URL | サーバーの `.env`（`RHB_HEALTHCHECK_*`）、`~/.egress-check.env` | 偽の「成功」を送られ、失敗や停止に気づけなくなる |
@@ -729,20 +773,23 @@ GitHub の Settings → SSH and GPG keys に新しい公開鍵を追加し、古
 ```bash
 cd ~/medical-facility-master-api-laravel
 NEW_DB_PASSWORD=$(openssl rand -hex 24)
+NEW_DB_READER_PASSWORD=$(openssl rand -hex 24)
 NEW_DB_ROOT_PASSWORD=$(openssl rand -hex 24)
 
 docker compose exec -T mysql sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD"' <<SQL
 ALTER USER 'app'@'%' IDENTIFIED BY '${NEW_DB_PASSWORD}';
+ALTER USER 'app_reader'@'%' IDENTIFIED BY '${NEW_DB_READER_PASSWORD}';
 ALTER USER 'root'@'%' IDENTIFIED BY '${NEW_DB_ROOT_PASSWORD}';
 ALTER USER 'root'@'localhost' IDENTIFIED BY '${NEW_DB_ROOT_PASSWORD}';
 SQL
 
-sed -i "s/^DB_PASSWORD=.*/DB_PASSWORD=${NEW_DB_PASSWORD}/; s/^DB_ROOT_PASSWORD=.*/DB_ROOT_PASSWORD=${NEW_DB_ROOT_PASSWORD}/" .env
+sed -i "s/^DB_PASSWORD=.*/DB_PASSWORD=${NEW_DB_PASSWORD}/; s/^DB_READER_PASSWORD=.*/DB_READER_PASSWORD=${NEW_DB_READER_PASSWORD}/; s/^DB_ROOT_PASSWORD=.*/DB_ROOT_PASSWORD=${NEW_DB_ROOT_PASSWORD}/" .env
 docker compose up -d     # 新しいパスワードでコンテナを作り直す
 docker compose ps        # すべて running（app と mysql は healthy）になることを確認
+curl -fsS "https://<SERVER_NAME>/api/v1/medical-facilities?per_page=1" | head -c 200   # app の healthcheck はデータベースに接続しないため、API で確かめる
 ```
 
-- `DB_USERNAME` を `app` 以外にしている場合は、`'app'` をその名前に変えてください。
+- `DB_USERNAME` / `DB_READER_USERNAME` を `app` / `app_reader` 以外にしている場合は、`'app'` / `'app_reader'` をその名前に変えてください。
 - `ALTER USER` から `docker compose up -d` が終わるまでの間（1分ほど）、API はデータベースに接続できずエラーを返します。
 - バックアップのスクリプト（「4. バックアップ」）は MySQL のコンテナの環境変数からパスワードを読むため、変更は不要です。
 

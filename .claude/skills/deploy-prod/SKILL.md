@@ -27,11 +27,13 @@ description: "Deploy merged main of this API to the production Oracle A1 server 
 ## 2. デプロイ
 
 ```bash
-ssh ubuntu@168.110.42.30 'cd ~/medical-facility-master-api-laravel && git pull --ff-only && docker compose build && docker compose run --rm app php artisan migrate --force && docker compose up -d'
+ssh ubuntu@168.110.42.30 'cd ~/medical-facility-master-api-laravel && git pull --ff-only && docker compose build && docker compose run --rm scheduler php artisan migrate --force && docker compose up -d'
 ```
 
 - `git pull --ff-only` が失敗したら、サーバーで手作業の変更がないか確かめ、ユーザーに相談する。
 - 続けて、1-3 で洗い出した一度だけの作業を、PR に書いた順で実行する。
+- 一度だけの作業のうち、`up -d` より前に済ませるもの（PR の「デプロイ」欄にそう書いたもの。例：新しい DB ユーザーの作成）は、上のコマンドの前に行う。
+- データを書き換える artisan コマンド（migrate・seed・取込・`rhb:export` など）は **scheduler** で実行する（`exec scheduler` / `run --rm scheduler`）。app は読み取りと `cache` だけのユーザーで接続しているため、app で実行すると権限のエラーになる。
 - 長いコマンド（取込のやり直しなど）は `run_in_background` で実行し、終わるのを待つ。
 - メンテナンスモードにした場合は、**最後に必ず `php artisan up`**。
 
