@@ -38,4 +38,12 @@ return [
         '03-2_dental_speciality_hours' => InstitutionType::DentalClinic,
     ],
 
+    // 医療情報ネット IDs of facilities that see no outpatients, though
+    // their published hours say otherwise (the source has no field for it):
+    // they get no opening periods, so open_at never finds them. Found by
+    // hand; the reason goes next to each ID.
+    'without_outpatients' => [
+        '1311131300470', // 同善病院 (台東区): inpatients only, listed as open 24 hours every day
+    ],
+
 ];
