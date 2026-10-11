@@ -15,6 +15,10 @@ x-app: &app
     image: medical-facility-master-api:latest
     restart: unless-stopped
     env_file: .env
+    environment: &app-environment
+        # Only the mysql service needs the root password; env_file would
+        # hand it to every container that runs the app.
+        DB_ROOT_PASSWORD: ''
     volumes:
         - 'storage-app:/app/storage/app'
         - 'storage-logs:/app/storage/logs'
@@ -31,6 +35,15 @@ services:
     app:
         <<: *app
         environment:
+            <<: *app-environment
+            # The web server connects as a user that may only read, and write
+            # the cache table (DEPLOY.md), so a flaw in a request's handling
+            # cannot change the data. worker, scheduler and the operational
+            # commands (run through scheduler) keep DB_USERNAME's full rights.
+            # DB_URL would take precedence over the two below.
+            DB_URL: ''
+            DB_USERNAME: '${DB_READER_USERNAME:?DB_READER_USERNAME must be set in .env}'
+            DB_PASSWORD: '${DB_READER_PASSWORD:?DB_READER_PASSWORD must be set in .env}'
             # A hostname (e.g. 203-0-113-1.sslip.io) makes Caddy serve HTTPS
             # with an automatic Let's Encrypt certificate; ":80" serves plain
             # HTTP only.
