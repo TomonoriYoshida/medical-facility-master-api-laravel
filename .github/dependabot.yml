@@ -5,3 +5,14 @@ updates:
     directory: /
     schedule:
       interval: weekly
+
+  # Security fixes arrive on their own (the repository's Dependabot security
+  # updates); this also keeps up with patch and minor releases, which can
+  # carry fixes that never get an advisory. One PR per week for both.
+  - package-ecosystem: composer
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      composer-minor-and-patch:
+        update-types: [minor, patch]
