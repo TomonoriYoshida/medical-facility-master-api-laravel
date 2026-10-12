@@ -107,6 +107,31 @@ class ImportRhbFacilityListJobTest extends TestCase
         ]);
     }
 
+    public function test_a_superseded_file_of_the_same_published_date_is_not_imported(): void
+    {
+        // A file the bureau replaced keeps the page's date ("shitei_ika_r0810.zip"
+        // → "shitei_ika_r0810-1.zip"); only the replacement is current.
+        $replaced = $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A'),
+            $this->hospitalRow('2', '0111001', '訂正で消えた病院'),
+        ], filename: 'shitei_ika_r0810.xlsx', publishedOn: '2026-10-01');
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        $replaced->update(['superseded_at' => now()]);
+        $this->seedDownload(RhbCategory::Medical, [
+            $this->hospitalRow('1', '0111000', '病院A（訂正）'),
+        ], filename: 'shitei_ika_r0810-1.xlsx', publishedOn: '2026-10-01');
+        ImportRhbFacilityListJob::dispatch(RhbBureau::Hokkaido, RhbCategory::Medical);
+
+        $this->assertDatabaseHas('medical_facilities', ['facility_code' => '0111000', 'name' => '病院A（訂正）']);
+        $this->assertDatabaseHas('medical_facilities', ['facility_code' => '0111001', 'status' => MedicalFacilityStatus::Closed]);
+
+        // Same date, different data: the correction is a real change, not
+        // the re-parsing of one publication.
+        $event = MedicalFacilityEvent::where('event_type', MedicalFacilityEventType::Updated)->sole();
+        $this->assertSame(MedicalFacilityEventOrigin::Detected, $event->origin);
+    }
+
     public function test_a_clean_run_marks_every_current_download_as_imported(): void
     {
         $hospital = $this->seedDownload(RhbCategory::Medical, [

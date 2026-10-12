@@ -158,7 +158,9 @@ final class FacilityUpserter
      * only from re-parsing it after a parser or normalizer change. Decided
      * per facility, since the job's run-level view (--force on an imported
      * download) misses publications whose imported_at was never set, e.g.
-     * after a run with failed rows. Must run before last_seen moves.
+     * after a run with failed rows. Must run before last_seen moves. A file
+     * the bureau replaced (superseded_at) shares its replacement's date but
+     * not its data, so differences from it are real changes.
      */
     private function originAgainstPreviousData(
         MedicalFacility $facility,
@@ -169,12 +171,13 @@ final class FacilityUpserter
             return $origin;
         }
 
-        $previousPublishedOn = RhbDatasetDownload::query()
+        $previous = RhbDatasetDownload::query()
             ->whereKey($facility->last_seen_rhb_dataset_download_id)
-            ->first()
-            ?->published_on;
+            ->first();
 
-        return $previousPublishedOn?->toDateString() === $download->published_on->toDateString()
+        return $previous !== null
+            && $previous->superseded_at === null
+            && $previous->published_on->toDateString() === $download->published_on->toDateString()
             ? MedicalFacilityEventOrigin::Reprocessed
             : $origin;
     }

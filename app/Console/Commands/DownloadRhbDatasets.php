@@ -110,20 +110,118 @@ class DownloadRhbDatasets extends Command
             }
         }
 
+        $resolvedLinks = $links;
+
         $links = array_filter($links, fn (ResolvedRhbDatasetLink $link): bool => $this->scope->includesCategory($link->category)
             && ($link->prefectureCode === null || $this->scope->includesPrefecture($link->prefectureCode)));
 
-        foreach ($links as $link) {
-            if (! $this->processLink($bureauKey, $meta, $link)) {
-                $hasFailure = true;
+        // Category by category, so a replaced file stops being current right
+        // after its replacement is stored, not only once the whole bureau
+        // (several slow ZIPs) is done.
+        foreach ($this->scope->categories() as $category) {
+            $categoryHasFailure = false;
+
+            foreach ($links as $link) {
+                if ($link->category !== $category) {
+                    continue;
+                }
+
+                if (! $this->processLink($bureauKey, $meta, $link)) {
+                    $categoryHasFailure = true;
+                }
+
+                if (! app()->environment('testing')) {
+                    usleep(200_000);
+                }
             }
 
-            if (! app()->environment('testing')) {
-                usleep(200_000);
+            // Until the replacement is stored, the replaced file stays current.
+            if (! $categoryHasFailure && ! $this->supersedeReplacedFiles($meta, $category, $resolvedLinks)) {
+                $categoryHasFailure = true;
             }
+
+            $hasFailure = $hasFailure || $categoryHasFailure;
         }
 
         return ! $hasFailure;
+    }
+
+    /**
+     * A bureau may replace a file without changing the page's "current as
+     * of" date (関東信越厚生局 swapped "shitei_ika_r0810.zip" for
+     * "shitei_ika_r0810-1.zip" on 2026-10-09). The replaced file shares
+     * published_on with its replacement, so RhbDatasetDownload::allFor()
+     * would treat both as current; a file of that date no longer linked from
+     * the page is marked superseded instead -- but only when the page links
+     * another file of that date for the same prefectures, so a per-prefecture
+     * link (Kyushu) briefly missing from the page does not drop that
+     * prefecture. Compared against every resolved link, not only the in-scope
+     * ones, so that narrowing RHB_PREFECTURES never supersedes a file still
+     * on the page.
+     *
+     * @param  array<string, mixed>  $meta
+     * @param  list<ResolvedRhbDatasetLink>  $resolvedLinks
+     */
+    private function supersedeReplacedFiles(array $meta, RhbCategory $category, array $resolvedLinks): bool
+    {
+        $label = "{$meta['label']} {$category->name}";
+
+        /** @var array<string, array{filenames: list<string>, prefectures: list<string>}> $linkedByDate */
+        $linkedByDate = [];
+
+        foreach ($resolvedLinks as $link) {
+            if ($link->category !== $category) {
+                continue;
+            }
+
+            $date = $link->publishedOn->toDateString();
+            $linkedByDate[$date]['filenames'][] = $link->filename;
+            $linkedByDate[$date]['prefectures'][] = $this->prefectureKey($link->prefectureCode !== null ? [$link->prefectureCode] : $meta['prefecture_codes']);
+        }
+
+        try {
+            foreach ($linkedByDate as $publishedOn => $linked) {
+                $replaced = RhbDatasetDownload::query()
+                    ->where('bureau_code', $meta['bureau'])
+                    ->where('category', $category)
+                    ->where('published_on', $publishedOn)
+                    ->whereNotIn('filename', $linked['filenames'])
+                    ->whereNull('superseded_at')
+                    ->get()
+                    ->filter(fn (RhbDatasetDownload $download): bool => in_array($this->prefectureKey($download->prefecture_codes), $linked['prefectures'], true));
+
+                if ($replaced->isEmpty()) {
+                    continue;
+                }
+
+                RhbDatasetDownload::query()->whereKey($replaced->modelKeys())->update(['superseded_at' => now()]);
+
+                foreach ($replaced as $download) {
+                    $this->components->twoColumnDetail($label, "<fg=yellow>差し替えられたため現行から除外 ({$download->filename})</>");
+
+                    Log::info("rhb:download: {$label}: 差し替えられたファイルを現行から除外しました", [
+                        'filename' => $download->filename,
+                        'published_on' => $publishedOn,
+                    ]);
+                }
+            }
+        } catch (Throwable $e) {
+            $this->reportFailure("{$label}: 差し替えられたファイルの除外に失敗しました", $e);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  array<array-key, string>  $prefectureCodes
+     */
+    private function prefectureKey(array $prefectureCodes): string
+    {
+        sort($prefectureCodes);
+
+        return implode(',', $prefectureCodes);
     }
 
     /**
@@ -139,14 +237,21 @@ class DownloadRhbDatasets extends Command
             // "current as of" date is the only signal that content
             // changed, so filename alone cannot be the dedup key or every
             // update after the first would be silently skipped forever.
-            $alreadyDownloaded = RhbDatasetDownload::query()
+            $existing = RhbDatasetDownload::query()
                 ->where('bureau_code', $meta['bureau'])
                 ->where('category', $link->category)
                 ->where('filename', $link->filename)
                 ->where('published_on', $link->publishedOn->toDateString())
-                ->exists();
+                ->first();
 
-            if ($alreadyDownloaded) {
+            if ($existing !== null) {
+                // Linked from the page again after being replaced: current
+                // again, and imported again, since the facilities now hold
+                // its replacement's data.
+                if ($existing->superseded_at !== null) {
+                    $existing->update(['superseded_at' => null, 'imported_at' => null]);
+                }
+
                 $this->components->twoColumnDetail($label, '<fg=gray>最新版を取得済み</>');
 
                 return true;

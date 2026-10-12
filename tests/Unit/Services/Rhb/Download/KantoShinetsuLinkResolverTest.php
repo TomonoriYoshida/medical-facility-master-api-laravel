@@ -43,6 +43,32 @@ class KantoShinetsuLinkResolverTest extends TestCase
         $this->assertNotContains('shitei_ikaheisetsu_r0809.zip', $filenames);
     }
 
+    public function test_a_replaced_zip_with_a_numbered_suffix_is_resolved(): void
+    {
+        // Regression test: on 2026-10-09 the bureau replaced the 医科 ZIP
+        // with "shitei_ika_r0810-1.zip", and the "-1" broke the match.
+        $html = str_replace('shitei_ika_r0809.zip', 'shitei_ika_r0809-1.zip', $this->fixture());
+
+        $links = (new KantoShinetsuLinkResolver)->resolve($html, 'https://kouseikyoku.mhlw.go.jp');
+
+        $filenames = array_map(fn ($link) => $link->filename, $links);
+
+        $this->assertSame(['shitei_ika_r0809-1.zip', 'shitei_shika_r0809.zip', 'shitei_yakkyoku_r0809.zip'], $filenames);
+    }
+
+    public function test_the_latest_replacement_wins_when_the_original_is_still_listed(): void
+    {
+        $html = str_replace(
+            '<a href="/kantoshinetsu/shitei_ika_r0809.zip">',
+            '<a href="/kantoshinetsu/shitei_ika_r0809.zip">訂正前</a><a href="/kantoshinetsu/shitei_ika_r0809-2.zip">訂正</a><a href="/kantoshinetsu/shitei_ika_r0809-1.zip">',
+            $this->fixture(),
+        );
+
+        $links = (new KantoShinetsuLinkResolver)->resolve($html, 'https://kouseikyoku.mhlw.go.jp');
+
+        $this->assertSame('shitei_ika_r0809-2.zip', $links[0]->filename);
+    }
+
     public function test_the_published_on_date_is_parsed_from_the_reiwa_era_paragraph(): void
     {
         $links = (new KantoShinetsuLinkResolver)->resolve($this->fixture(), 'https://kouseikyoku.mhlw.go.jp');

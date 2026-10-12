@@ -8,6 +8,7 @@ use App\Models\RhbDatasetDownload;
 use App\Services\Rhb\Download\BureauLinkResolverInterface;
 use App\Services\Rhb\Download\HokkaidoLinkResolver;
 use App\Services\Rhb\Download\ResolvedRhbDatasetLink;
+use App\Services\Rhb\Download\TohokuLinkResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -40,6 +41,8 @@ class DownloadRhbDatasetsTest extends TestCase
 
     private string $indexHtml = '';
 
+    private ?string $kantoShinetsuIndexHtml = null;
+
     /** @var list<string> */
     private array $failingUrls = [];
 
@@ -57,7 +60,7 @@ class DownloadRhbDatasetsTest extends TestCase
             }
 
             if ($request->url() === self::KANTOSHINETSU_INDEX_URL) {
-                return Http::response($this->fixture('rhb-kantoshinetsu-index.html'));
+                return Http::response($this->kantoShinetsuIndexHtml ?? $this->fixture('rhb-kantoshinetsu-index.html'));
             }
 
             if ($request->url() === self::TOKAIHOKURIKU_INDEX_URL) {
@@ -139,6 +142,76 @@ class DownloadRhbDatasetsTest extends TestCase
 
         $filenames = RhbDatasetDownload::where('filename', '000499337.xlsx')->count();
         $this->assertSame(2, $filenames);
+    }
+
+    public function test_a_file_replaced_on_the_same_published_date_is_superseded(): void
+    {
+        // Regression test: on 2026-10-09 関東信越厚生局 replaced
+        // "shitei_ika_r0810.zip" with "shitei_ika_r0810-1.zip" without
+        // changing the page's date; both rows share published_on, so the
+        // replaced one must stop being current.
+        Storage::fake('local');
+        $this->artisan('rhb:download', ['--bureau' => ['kantoshinetsu']])->assertExitCode(0);
+
+        $replaced = RhbDatasetDownload::where('filename', 'shitei_ika_r0809.zip')->sole();
+
+        $this->kantoShinetsuIndexHtml = $this->replacedKantoShinetsuIndex();
+        $this->artisan('rhb:download', ['--bureau' => ['kantoshinetsu']])->assertExitCode(0);
+
+        $this->assertNotNull($replaced->fresh()->superseded_at);
+        $this->assertSame(
+            ['shitei_ika_r0809-1.zip'],
+            RhbDatasetDownload::allFor(RhbBureau::KantoShinetsu, RhbCategory::Medical)->pluck('filename')->all(),
+        );
+        $this->assertDatabaseCount('rhb_dataset_downloads', 4);
+        $this->assertSame(3, RhbDatasetDownload::whereNull('superseded_at')->count());
+    }
+
+    public function test_a_replaced_file_stays_current_while_its_replacement_fails_to_download(): void
+    {
+        Storage::fake('local');
+        $this->artisan('rhb:download', ['--bureau' => ['kantoshinetsu']])->assertExitCode(0);
+
+        $this->kantoShinetsuIndexHtml = $this->replacedKantoShinetsuIndex();
+        $this->fakeHttp('', failingUrls: ['https://kouseikyoku.mhlw.go.jp/kantoshinetsu/shitei_ika_r0809-1.zip']);
+        $this->artisan('rhb:download', ['--bureau' => ['kantoshinetsu']])->assertExitCode(1);
+
+        $this->assertNull(RhbDatasetDownload::where('filename', 'shitei_ika_r0809.zip')->sole()->superseded_at);
+    }
+
+    public function test_a_replaced_file_linked_again_is_current_and_imported_again(): void
+    {
+        Storage::fake('local');
+        $this->artisan('rhb:download', ['--bureau' => ['kantoshinetsu']])->assertExitCode(0);
+        $original = RhbDatasetDownload::where('filename', 'shitei_ika_r0809.zip')->sole();
+        $original->update(['imported_at' => now()]);
+
+        $this->kantoShinetsuIndexHtml = $this->replacedKantoShinetsuIndex();
+        $this->artisan('rhb:download', ['--bureau' => ['kantoshinetsu']])->assertExitCode(0);
+
+        $this->kantoShinetsuIndexHtml = null;
+        $this->artisan('rhb:download', ['--bureau' => ['kantoshinetsu']])->assertExitCode(0);
+
+        $original->refresh();
+        $this->assertNull($original->superseded_at);
+        // The facilities hold the replacement's data by now.
+        $this->assertNull($original->imported_at);
+        $this->assertNotNull(RhbDatasetDownload::where('filename', 'shitei_ika_r0809-1.zip')->sole()->superseded_at);
+    }
+
+    public function test_a_prefecture_link_missing_from_the_page_is_not_superseded(): void
+    {
+        // Bureaus publishing one file per prefecture: a prefecture's link
+        // missing for a day is not a replacement, so its file stays current.
+        Storage::fake('local');
+        $this->bindTohokuLinks(['iwate_r0809.zip' => '03', 'miyagi_r0809.zip' => '04']);
+        $this->artisan('rhb:download', ['--bureau' => ['tohoku']]);
+
+        $this->bindTohokuLinks(['iwate_r0809-1.zip' => '03']);
+        $this->artisan('rhb:download', ['--bureau' => ['tohoku']]);
+
+        $this->assertNotNull(RhbDatasetDownload::where('filename', 'iwate_r0809.zip')->sole()->superseded_at);
+        $this->assertNull(RhbDatasetDownload::where('filename', 'miyagi_r0809.zip')->sole()->superseded_at);
     }
 
     public function test_one_link_failing_does_not_prevent_the_others_from_downloading(): void
@@ -287,6 +360,40 @@ class DownloadRhbDatasetsTest extends TestCase
     {
         $this->indexHtml = $indexHtml;
         $this->failingUrls = $failingUrls;
+    }
+
+    private function replacedKantoShinetsuIndex(): string
+    {
+        return str_replace('shitei_ika_r0809.zip', 'shitei_ika_r0809-1.zip', $this->fixture('rhb-kantoshinetsu-index.html'));
+    }
+
+    /**
+     * @param  array<string, string>  $medicalFilenames  filename => prefecture code
+     */
+    private function bindTohokuLinks(array $medicalFilenames): void
+    {
+        $this->app->instance(TohokuLinkResolver::class, new class($medicalFilenames) implements BureauLinkResolverInterface
+        {
+            /**
+             * @param  array<string, string>  $medicalFilenames
+             */
+            public function __construct(private readonly array $medicalFilenames) {}
+
+            public function resolve(string $html, string $baseUrl): array
+            {
+                $publishedOn = CarbonImmutable::parse('2026-09-01');
+                $links = [];
+
+                foreach ($this->medicalFilenames as $filename => $prefectureCode) {
+                    $links[] = new ResolvedRhbDatasetLink(RhbCategory::Medical, "{$baseUrl}/{$filename}", $filename, $publishedOn, $prefectureCode);
+                }
+
+                $links[] = new ResolvedRhbDatasetLink(RhbCategory::Dental, "{$baseUrl}/dental.zip", 'dental.zip', $publishedOn);
+                $links[] = new ResolvedRhbDatasetLink(RhbCategory::Pharmacy, "{$baseUrl}/pharmacy.zip", 'pharmacy.zip', $publishedOn);
+
+                return $links;
+            }
+        });
     }
 
     private function fixture(string $name): string

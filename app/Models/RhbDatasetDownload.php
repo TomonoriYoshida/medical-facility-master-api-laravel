@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Model;
     'published_on',
     'downloaded_at',
     'imported_at',
+    'superseded_at',
 ])]
 class RhbDatasetDownload extends Model
 {
@@ -44,6 +45,9 @@ class RhbDatasetDownload extends Model
      *   the month (e.g. Kanto-Shinetsu's "shitei_ika_r{YYMM}.zip"), where
      *   grouping by filename would treat every past month as current and
      *   re-import it over the latest data.
+     * - A file the bureau replaced without changing the page's date shares
+     *   published_on with its replacement; rhb:download marks it
+     *   superseded_at, and it is no longer current.
      *
      * @return Collection<int, static>
      */
@@ -52,6 +56,7 @@ class RhbDatasetDownload extends Model
         $latestPublishedOn = static::query()
             ->where('bureau_code', $bureau)
             ->where('category', $category)
+            ->whereNull('superseded_at')
             ->max('published_on');
 
         if ($latestPublishedOn === null) {
@@ -62,6 +67,7 @@ class RhbDatasetDownload extends Model
             ->where('bureau_code', $bureau)
             ->where('category', $category)
             ->where('published_on', $latestPublishedOn)
+            ->whereNull('superseded_at')
             ->get();
     }
 
@@ -79,6 +85,7 @@ class RhbDatasetDownload extends Model
             'published_on' => 'date',
             'downloaded_at' => 'datetime',
             'imported_at' => 'datetime',
+            'superseded_at' => 'datetime',
         ];
     }
 }
