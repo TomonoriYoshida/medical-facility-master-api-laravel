@@ -23,6 +23,12 @@ use RuntimeException;
  * "_r" excludes the heisetsu variants without needing to inspect link
  * text or table position (verified against the real page's full href
  * list, same technique as TohokuLinkResolver).
+ *
+ * A file replaced after publication keeps its month but gains a "-N"
+ * suffix ("shitei_ika_r0810-1.zip", seen 2026-10-09; the bureau's 新規/廃止
+ * ZIPs use the same "-1"/"-2" convention), so the suffix is optional; if
+ * the page ever lists the original next to its replacement, the highest
+ * suffix wins.
  */
 final class KantoShinetsuLinkResolver implements BureauLinkResolverInterface
 {
@@ -46,14 +52,17 @@ final class KantoShinetsuLinkResolver implements BureauLinkResolverInterface
         $links = [];
 
         foreach (self::CATEGORY_SLUGS as $slug => $category) {
-            if (! preg_match('/href="([^"]*shitei_'.$slug.'_r\d+\.zip)"/', $html, $matches)) {
+            if (! preg_match_all('/href="([^"]*shitei_'.$slug.'_r\d+(?:-(\d+))?\.zip)"/', $html, $matches, PREG_SET_ORDER)) {
                 continue;
             }
 
+            usort($matches, fn (array $a, array $b): int => (int) ($b[2] ?? 0) <=> (int) ($a[2] ?? 0));
+            $href = $matches[0][1];
+
             $links[] = new ResolvedRhbDatasetLink(
                 category: $category,
-                url: rtrim($baseUrl, '/').'/'.ltrim($matches[1], '/'),
-                filename: basename($matches[1]),
+                url: rtrim($baseUrl, '/').'/'.ltrim($href, '/'),
+                filename: basename($href),
                 publishedOn: $publishedOn,
             );
         }
