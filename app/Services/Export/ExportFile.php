@@ -36,7 +36,7 @@ final class ExportFile
     /**
      * RFC 4180 CSV: fields quoted as needed, quotes doubled, CRLF line ends.
      *
-     * @param  list<string|int|null>  $fields
+     * @param  list<string|int|float|null>  $fields
      */
     public function writeCsv(array $fields, bool $countsAsRecord = false): void
     {
