@@ -3,12 +3,14 @@
 namespace Tests\Feature\Console;
 
 use App\Enums\DepartmentBaseCategory;
+use App\Enums\GeocodeLevel;
 use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityStatus;
 use App\Models\MedicalFacility;
 use App\Services\Export\FacilityExporter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Tests\TestCase;
 
 class ExportMedicalFacilitiesTest extends TestCase
@@ -86,6 +88,41 @@ class ExportMedicalFacilitiesTest extends TestCase
         $this->assertSame('1|5', $row['department_category_codes']);
         $this->assertSame('内科|眼科', $row['department_categories']);
         $this->assertArrayNotHasKey('founder_name', $row);
+    }
+
+    public function test_csv_coordinates_keep_their_decimals(): void
+    {
+        MedicalFacility::factory()->create([
+            'prefecture_code' => '13',
+            'latitude' => 35.701308,
+            'longitude' => 139.754859,
+            'geocode_level' => GeocodeLevel::Block,
+        ]);
+
+        $this->artisan('rhb:export')->assertExitCode(0);
+
+        [$header, $values] = $this->csvRows('medical-facilities-13.csv.gz');
+        $row = array_combine($header, $values);
+        $this->assertSame('35.701308', $row['latitude']);
+        $this->assertSame('139.754859', $row['longitude']);
+    }
+
+    public function test_it_fails_and_keeps_the_current_set_when_no_facility_is_in_scope(): void
+    {
+        $facility = MedicalFacility::factory()->create(['prefecture_code' => '13']);
+        $this->artisan('rhb:export')->assertExitCode(0);
+        $set = $this->manifest()['set'];
+        $facility->delete();
+
+        try {
+            $this->artisan('rhb:export', ['--force' => true]);
+            $this->fail('The export should fail when no facility is in scope.');
+        } catch (RuntimeException) {
+        }
+
+        $this->assertSame($set, $this->manifest()['set']);
+        $this->assertCount(1, $this->jsonLines('medical-facilities-13.jsonl.gz'));
+        $this->assertSame(["exports/sets/{$set}"], Storage::disk('local')->directories('exports/sets'));
     }
 
     public function test_only_facilities_within_the_scope_are_exported(): void

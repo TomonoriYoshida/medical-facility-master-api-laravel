@@ -29,6 +29,10 @@ use RuntimeException;
  * the data nor the scope changed since the current set, which keeps each
  * file's ETag stable.
  *
+ * A run that finds no facilities in scope (say, while the database is being
+ * rebuilt) fails and leaves the current set in place, so clients never
+ * download an empty copy and replace theirs with it.
+ *
  * JSON Lines rows have exactly the shape of the API's facility resource.
  * CSV rows flatten it: codes and labels in separate columns, department
  * categories joined with "|", and the nested designation_history /
@@ -112,6 +116,10 @@ final class FacilityExporter
         $lastUpdatedAt = $this->facilities()->max('updated_at');
         $dataUpdatedAt = $lastUpdatedAt !== null ? Carbon::parse($lastUpdatedAt)->toJSON() : null;
 
+        if ($this->facilities()->doesntExist()) {
+            throw new RuntimeException('No facilities are in scope, so the current export set is kept.');
+        }
+
         $current = $this->manifest();
 
         if (! $force && $current !== null && $current['data_updated_at'] === $dataUpdatedAt && $current['scope'] === $scope) {
@@ -192,7 +200,7 @@ final class FacilityExporter
 
     /**
      * @param  array<string, mixed>  $row
-     * @return list<string|int|null>
+     * @return list<string|int|float|null>
      */
     private function csvRow(MedicalFacility $facility, array $row): array
     {
@@ -223,9 +231,10 @@ final class FacilityExporter
      * A text starting with = + - @ (or a tab / carriage return) would run as
      * a formula when the CSV is opened in a spreadsheet (CSV injection), so
      * it gets a leading quote, as the frontend's CSV does. Numbers and the
-     * JSON columns never start with one of these.
+     * JSON columns never start with one of these. Coordinates are floats and
+     * must stay so; an int|string type would truncate them to whole degrees.
      */
-    private function neutralizeFormula(string|int|null $value): string|int|null
+    private function neutralizeFormula(string|int|float|null $value): string|int|float|null
     {
         return is_string($value) && preg_match('/^[=+\-@\t\r]/', $value) === 1 ? "'{$value}" : $value;
     }
