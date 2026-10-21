@@ -186,11 +186,12 @@ docker compose up -d app   # マウントを追加した初回だけ必要
 ```bash
 cd medical-facility-master-api-laravel
 git pull
-docker compose build
+docker compose build --pull
 docker compose run --rm scheduler php artisan migrate --force
 docker compose up -d
 ```
 
+- `--pull` は、Dockerfile の元のイメージ（`dunglas/frankenphp:1-php8.5-trixie`）を毎回取り直すためのものです。付けないと手元に残った古いイメージが使われ続け、PHP のセキュリティ修正が入りません。
 - worker は、実行中のジョブが終わるまで最大10分待ってから停止します（`stop_grace_period`）。取込の時間帯（05:00〜06:00 頃）を避けると、すぐに切り替わります。
 - 設定（config）とルートのキャッシュは、コンテナの起動時に作り直されます。`.env` を変えた場合も `docker compose up -d` で反映されます。
 
