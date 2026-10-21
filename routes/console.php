@@ -86,3 +86,11 @@ Schedule::command('cache:prune-expired')
 Schedule::command('access-log:check')
     ->dailyAt('00:15')
     ->timezone('Asia/Tokyo');
+
+// A newer PHP release of the running branch, and then the base image built
+// with it; hourly so a security release is noticed the same day, alerting
+// once for each.
+Schedule::command('php:check-update')
+    ->hourlyAt(20)
+    ->timezone('Asia/Tokyo')
+    ->withoutOverlapping();

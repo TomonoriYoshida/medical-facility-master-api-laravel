@@ -52,6 +52,14 @@ class ScheduledTasksTest extends TestCase
         $this->assertSame('Asia/Tokyo', $event->timezone);
     }
 
+    public function test_php_update_is_checked_hourly(): void
+    {
+        $event = $this->findEvent('php:check-update');
+
+        $this->assertNotNull($event);
+        $this->assertSame('20 * * * *', $event->expression);
+    }
+
     public function test_population_import_is_checked_monthly(): void
     {
         $event = $this->findEvent('population:import');

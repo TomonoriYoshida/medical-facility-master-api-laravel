@@ -588,6 +588,17 @@ docker compose exec app tail -f storage/logs/access.log                         
    docker compose exec app php artisan tinker --execute 'Log::error("通知のテスト");'
    ```
 
+### PHP の更新の通知
+
+scheduler が毎時20分に `php:check-update` を実行し、動いている PHP と、php.net にある同じ系列（8.5 など）の最新版を比べます。新しい版があれば、次の2回だけエラーとして通知します（「エラーの通知」）。
+
+1. 新しい版が出たとき。元のイメージ（`dunglas/frankenphp:1-php8.5.x-trixie`）はまだないことが多いので、待ちます。
+2. 元のイメージが出たとき。「3. 更新のデプロイ」の手順（`docker compose build --pull`）でデプロイします。
+
+- php.net や Docker Hub につながらないときは、警告をログに残すだけで通知しません。
+- Dockerfile の `FROM` を変えたら、`config/php_update.php` のタグの形も合わせます。
+- 今の状態は `docker compose exec scheduler php artisan php:check-update` で確かめられます。
+
 ## 8. 不審なアクセスの確認と遮断
 
 ### 毎日の自動確認
