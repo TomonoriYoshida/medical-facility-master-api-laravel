@@ -4,6 +4,7 @@ namespace App\Services\OpenApi;
 
 use BackedEnum;
 use Dedoc\Scramble\Support\Generator\OpenApi;
+use Dedoc\Scramble\Support\Generator\Schema;
 
 /**
  * A Scramble document transformer that lists each enum schema's codes with
@@ -16,7 +17,8 @@ use Dedoc\Scramble\Support\Generator\OpenApi;
  * under the description, where Markdown reads it as part of the paragraph.
  *
  * Scramble names a schema after the class's short name, so the enum is
- * looked up in App\Enums.
+ * looked up in App\Enums. A component that is only a `$ref` to another
+ * schema (a Reference) carries no cases, so it is skipped.
  */
 class DescribesEnumCases
 {
@@ -25,7 +27,7 @@ class DescribesEnumCases
         foreach ($openApi->components->schemas as $name => $schema) {
             $className = 'App\\Enums\\'.$name;
 
-            if (! is_a($className, BackedEnum::class, true)) {
+            if (! $schema instanceof Schema || ! is_a($className, BackedEnum::class, true)) {
                 continue;
             }
 
