@@ -74,6 +74,8 @@ class MedicalFacility extends Model
             'designation_history' => 'array',
             'bed_counts' => 'array',
             'department_categories' => AsEnumCollection::class.':'.DepartmentBaseCategory::class,
+            'e_prescription_started_on' => 'date',
+            'e_prescription_refill_started_on' => 'date',
         ];
     }
 }

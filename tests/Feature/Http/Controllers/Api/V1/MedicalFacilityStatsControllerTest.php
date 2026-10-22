@@ -44,6 +44,16 @@ class MedicalFacilityStatsControllerTest extends TestCase
         $response->assertJsonStructure(['meta' => ['attribution' => ['notice', 'license', 'sources']]]);
     }
 
+    public function test_counts_only_the_facilities_using_e_prescriptions(): void
+    {
+        MedicalFacility::factory()->count(2)->create(['e_prescription_started_on' => '2026-08-01']);
+        MedicalFacility::factory()->create();
+
+        $this->getJson('/api/v1/stats/facilities?group_by=municipality&e_prescription=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 2);
+    }
+
     public function test_counts_per_municipality_most_first_with_unresolved_addresses_as_null(): void
     {
         Municipality::factory()->create(['code' => '13101', 'prefecture_code' => '13', 'name' => '千代田区']);

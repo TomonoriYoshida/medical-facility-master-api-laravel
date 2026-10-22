@@ -108,6 +108,12 @@ class MedicalFacilityIndexRequest extends FormRequest
             'designation_reason' => ['sometimes', 'string', 'encoding:UTF-8', 'max:20'],
 
             /**
+             * 電子処方箋への対応。`1` で対応している施設だけ、`0` で対応していない施設だけ
+             * （厚生労働省の対応施設リストにあるか。毎週更新）
+             */
+            'e_prescription' => ['sometimes', 'boolean'],
+
+            /**
              * 並び順。`designated_on` / `-designated_on`（指定年月日の古い順 / 新しい順、指定年月日のない施設は末尾）、
              * `updated_at` / `-updated_at`（内容が変わった日時の古い順 / 新しい順）。省略時はid順
              */

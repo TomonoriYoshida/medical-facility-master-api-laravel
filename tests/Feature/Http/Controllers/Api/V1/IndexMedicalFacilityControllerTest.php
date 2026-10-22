@@ -495,6 +495,18 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $response->assertJsonPath('data.0.id', $newlyOpened->id);
     }
 
+    public function test_filters_by_whether_the_facility_uses_e_prescriptions(): void
+    {
+        $usesIt = MedicalFacility::factory()->create(['e_prescription_started_on' => '2026-08-01']);
+        $doesNot = MedicalFacility::factory()->create();
+
+        $this->getJson('/api/v1/medical-facilities?e_prescription=1')->assertOk()->assertJsonPath('data.*.id', [$usesIt->id]);
+        $this->getJson('/api/v1/medical-facilities?e_prescription=0')->assertOk()->assertJsonPath('data.*.id', [$doesNot->id]);
+        $this->getJson('/api/v1/medical-facilities?e_prescription=yes')
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.e_prescription.0', 'e_prescription は 1 か 0 にしてください。');
+    }
+
     public function test_sorts_by_designation_date_newest_first_with_id_as_tiebreaker(): void
     {
         $oldest = MedicalFacility::factory()->create(['designated_on' => '2001-01-01']);
