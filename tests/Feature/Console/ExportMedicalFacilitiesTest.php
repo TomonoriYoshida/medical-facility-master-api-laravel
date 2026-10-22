@@ -70,6 +70,7 @@ class ExportMedicalFacilitiesTest extends TestCase
             'designation_history' => [['reason' => '新規', 'date' => '2026-08-01']],
             'bed_counts' => ['一般' => 19],
             'department_categories' => [DepartmentBaseCategory::InternalMedicine, DepartmentBaseCategory::Ophthalmology],
+            'name_kana' => 'シンリョウジョ チュウオウ',
         ]);
 
         $this->artisan('rhb:export')->assertExitCode(0);
@@ -87,6 +88,10 @@ class ExportMedicalFacilitiesTest extends TestCase
         $this->assertSame(['一般' => 19], json_decode($row['bed_counts'], true));
         $this->assertSame('1|5', $row['department_category_codes']);
         $this->assertSame('内科|眼科', $row['department_categories']);
+        $this->assertSame('シンリョウジョ チュウオウ', $row['name_kana']);
+        $this->assertSame('', $row['website_url']);
+        // Columns added later come last, so reading by position keeps working.
+        $this->assertSame(['name_kana', 'website_url'], array_slice($header, -2));
         $this->assertArrayNotHasKey('founder_name', $row);
     }
 

@@ -10,6 +10,7 @@ use App\Services\Rhb\RhbScope;
 use Generator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Normalizer;
 use RuntimeException;
 
 /**
@@ -36,6 +37,7 @@ final class MedicalInfoNetImporter
         private readonly MedicalInfoNetHours $hours,
         private readonly FacilityMatchingKeys $keys,
         private readonly RhbScope $scope,
+        private readonly WebsiteUrl $websiteUrl,
     ) {}
 
     /**
@@ -189,10 +191,12 @@ final class MedicalInfoNetImporter
     }
 
     /**
-     * Pharmacies call the name column 名称, the others 正式名称.
+     * Pharmacies call the name column 名称 (its reading フリガナ, the website
+     * 薬局のホームページアドレス), the others 正式名称 (正式名称（フリガナ）,
+     * 案内用ホームページアドレス).
      *
      * @param  array<string, string>  $row
-     * @return array{source_id: string, municipality_code: string, name_key: string, address_key: string, latitude: ?float, longitude: ?float}|null
+     * @return array{source_id: string, municipality_code: string, name_key: string, address_key: string, latitude: ?float, longitude: ?float, name_kana: ?string, website_url: ?string}|null
      */
     private function location(array $row): ?array
     {
@@ -217,6 +221,21 @@ final class MedicalInfoNetImporter
             'address_key' => $this->keys->address($row['所在地'] ?? ''),
             'latitude' => $hasPosition ? $latitude : null,
             'longitude' => $hasPosition ? $longitude : null,
+            'name_kana' => $this->nameKana($row['正式名称（フリガナ）'] ?? $row['フリガナ'] ?? ''),
+            'website_url' => $this->websiteUrl->normalize($row['案内用ホームページアドレス'] ?? $row['薬局のホームページアドレス'] ?? ''),
         ];
+    }
+
+    /**
+     * The reading as listed, in full-width katakana: NFKC turns half-width
+     * kana full-width (and a full-width space into an ordinary one). A
+     * reading longer than the column (none so far; the longest is 100)
+     * is dropped rather than failing the whole import.
+     */
+    private function nameKana(string $value): ?string
+    {
+        $kana = trim(Normalizer::normalize($value, Normalizer::FORM_KC) ?: $value);
+
+        return $kana === '' || mb_strlen($kana) > 255 ? null : $kana;
     }
 }

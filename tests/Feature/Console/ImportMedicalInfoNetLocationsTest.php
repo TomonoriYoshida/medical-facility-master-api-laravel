@@ -18,9 +18,9 @@ class ImportMedicalInfoNetLocationsTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const array HEADER = ['ID', '正式名称', '正式名称（フリガナ）', '都道府県コード', '市区町村コード', '所在地', '所在地座標（緯度）', '所在地座標（経度）', '毎週決まった曜日に休診（日）', '祝日に休診', 'その他の休診日（gw、お盆等）'];
+    private const array HEADER = ['ID', '正式名称', '正式名称（フリガナ）', '都道府県コード', '市区町村コード', '所在地', '所在地座標（緯度）', '所在地座標（経度）', '毎週決まった曜日に休診（日）', '祝日に休診', 'その他の休診日（gw、お盆等）', '案内用ホームページアドレス'];
 
-    private const array PHARMACY_HEADER = ['ID', '名称', 'フリガナ', '都道府県コード', '市区町村コード', '所在地', '所在地座標（緯度）', '所在地座標（経度）', '月_開店時間帯1_開始時間', '月_開店時間帯1_終了時間'];
+    private const array PHARMACY_HEADER = ['ID', '名称', 'フリガナ', '都道府県コード', '市区町村コード', '所在地', '所在地座標（緯度）', '所在地座標（経度）', '月_開店時間帯1_開始時間', '月_開店時間帯1_終了時間', '薬局のホームページアドレス'];
 
     private const array HOURS_HEADER = ['ID', '診療科目コード', '診療科目名', '診療時間帯', '月_診療開始時間', '月_診療終了時間'];
 
@@ -49,6 +49,25 @@ class ImportMedicalInfoNetLocationsTest extends TestCase
         $this->assertSame(1, MedicalInfoNetLocation::query()->where('institution_type', InstitutionType::Pharmacy)->count());
         // Kept without coordinates, so that matching by name still sees it.
         $this->assertNull(MedicalInfoNetLocation::query()->where('name_key', '座標なしクリニック')->sole()->latitude);
+    }
+
+    public function test_it_keeps_the_name_reading_and_a_servable_website(): void
+    {
+        $this->fakeMedicalInfoNet();
+
+        $this->artisan('medical-info-net:import')->assertExitCode(0);
+
+        $clinic = MedicalInfoNetLocation::query()->where('name_key', '丸の内クリニック')->sole();
+        // NFKC: a full-width space becomes an ordinary one.
+        $this->assertSame('イリョウホウジン マルノウチクリニック', $clinic->name_kana);
+        // The source often leaves out the scheme.
+        $this->assertSame('http://www.marunouchi-clinic.jp', $clinic->website_url);
+        $withoutWebsite = MedicalInfoNetLocation::query()->where('name_key', '座標なしクリニック')->sole();
+        $this->assertNull($withoutWebsite->name_kana);
+        $this->assertNull($withoutWebsite->website_url);
+        // Half-width kana become full-width.
+        $pharmacy = MedicalInfoNetLocation::query()->where('name_key', '丸の内薬局')->sole();
+        $this->assertSame(['マルノウチヤッキョク', 'https://marunouchi-pharmacy.jp/'], [$pharmacy->name_kana, $pharmacy->website_url]);
     }
 
     public function test_it_imports_days_off_and_opening_hours_within_the_scope(): void
@@ -133,13 +152,13 @@ class ImportMedicalInfoNetLocationsTest extends TestCase
         $files = [
             '01-1_hospital_facility_info_20260601.csv.zip' => $this->zip(self::HEADER, []),
             '02-1_clinic_facility_info_20260601.csv.zip' => $this->zip(self::HEADER, [
-                ['1301', '医療法人　丸の内クリニック', '', '13', '101', '東京都千代田区丸の内１丁目９番１号　ビル', '35.681200', '139.767100', '0', '0', '年末年始'],
-                ['1302', '座標なしクリニック', '', '13', '101', '東京都千代田区丸の内１丁目１番１号', '0.0', '0.0', '', '', ''],
-                ['0103', '範囲外クリニック', '', '01', '101', '北海道札幌市中央区北１条西２丁目', '43.06', '141.35', '1', '1', ''],
+                ['1301', '医療法人　丸の内クリニック', 'イリョウホウジン　マルノウチクリニック', '13', '101', '東京都千代田区丸の内１丁目９番１号　ビル', '35.681200', '139.767100', '0', '0', '年末年始', 'www.marunouchi-clinic.jp'],
+                ['1302', '座標なしクリニック', '　', '13', '101', '東京都千代田区丸の内１丁目１番１号', '0.0', '0.0', '', '', '', 'ﾅｼ'],
+                ['0103', '範囲外クリニック', '', '01', '101', '北海道札幌市中央区北１条西２丁目', '43.06', '141.35', '1', '1', '', ''],
             ]),
             '03-1_dental_facility_info_20260601.csv.zip' => $this->zip(self::HEADER, []),
             '05_pharmacy_20260601.csv.zip' => $this->zip(self::PHARMACY_HEADER, [
-                ['1304', '丸の内薬局', '', '13', '101', '東京都千代田区丸の内１丁目９番２号', '35.681300', '139.767200', '09:00', '18:00'],
+                ['1304', '丸の内薬局', 'ﾏﾙﾉｳﾁﾔｯｷｮｸ', '13', '101', '東京都千代田区丸の内１丁目９番２号', '35.681300', '139.767200', '09:00', '18:00', 'https://marunouchi-pharmacy.jp/'],
             ]),
             '01-2_hospital_speciality_hours_20260601.csv.zip' => $this->zip(self::HOURS_HEADER, []),
             '02-2_clinic_speciality_hours_20260601.csv.zip' => $this->zip(self::HOURS_HEADER, $clinicHours ?? [

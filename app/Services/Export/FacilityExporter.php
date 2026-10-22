@@ -57,6 +57,8 @@ final class FacilityExporter
         'designated_on', 'designation_history', 'bed_counts',
         'department_category_codes', 'department_categories',
         'created_at', 'updated_at',
+        // Added later, so at the end: a client reading by position keeps working.
+        'name_kana', 'website_url',
     ];
 
     public function __construct(
@@ -224,6 +226,7 @@ final class FacilityExporter
             $departments->map(fn (DepartmentBaseCategory $category): string => $category->label())->implode('|'),
             $row['created_at']?->toJSON(),
             $row['updated_at']?->toJSON(),
+            $row['name_kana'], $row['website_url'],
         ];
     }
 

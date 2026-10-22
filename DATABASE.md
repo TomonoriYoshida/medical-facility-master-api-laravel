@@ -47,6 +47,8 @@ national_land_medical_locations                                       ※ 施設
 | `geocode_level` | unsignedTinyInteger | ✓ | `App\Enums\GeocodeLevel` をcast。座標の精度。1:住居（〇番〇号） 2:街区（〇番） 3:地番（〇番地〇） 4:地番（枝番なし。同じ地番の別の枝番の座標） 5:町丁目（代表点） 6:医療情報ネット（厚生労働省の座標。下記「ジオコーディング」の5） 7:国土数値情報（国土交通省「国土数値情報（医療機関）」の位置。同じく6）。座標がない施設はnull |
 | `geocoded_address` | string | ✓ | 座標を求めたときの`address`。`address`と異なる施設（新規・移転）だけを`facilities:geocode`が処理する。座標を求められなかった施設にも入れ、毎日の再試行を防ぐ（`--all`で再試行） |
 | `medical_info_net_id` | string(20) | ✓ | 照合できた医療情報ネットの施設ID（`medical_info_net_locations.source_id`）。`facilities:assign-opening-hours`が毎朝付け直す（`updated_at`は動かさない。APIでは返さず、診療時間のAPIと`open_at`の判定に使う）。照合できない施設はnull |
+| `name_kana` | string | ✓ | 施設名のフリガナ。照合できた医療情報ネットの施設の`name_kana`を、`facilities:assign-opening-hours`が写す（変わったときは`updated_at`を動かす。APIで返す値のため）。照合できない施設はnull |
+| `website_url` | string(500) | ✓ | 施設のホームページ。`name_kana`と同じく医療情報ネットから写す。載っていない施設と照合できない施設はnull |
 | `phone_number` | string | ✓ | 電話番号。区切り文字を`0X-XXXX-XXXX`形式のハイフンに正規化して保持（括弧区切り・連続ハイフンのタイプミスのみ補正、桁の欠落など元データから正しい形を機械的に復元できないものはそのまま保持） |
 | `founder_name` | string | ✓ | 開設者（法人名＋代表者名等、原本の表記をそのまま保持）。個人名を含むことが多いため、**APIでは返さない** |
 | `administrator_name` | string | ✓ | 管理者名（常に個人名）。**APIでは返さない** |
@@ -54,7 +56,7 @@ national_land_medical_locations                                       ※ 施設
 | `designation_history` | json, nullable | ✓ | 指定年月日欄に埋め込まれた履歴（`{reason, date}` の配列。`reason` は新規／組織変更／交代等の登録理由、`date` は現在の指定期間の開始日と見られる）。約1割の施設は登録理由の記載がなく、`reason` が null になる。**`medical_facility_events`には流し込まない**——events テーブルは「自分（インポーター）が今回の同期で検知した変化」を意味する追記専用ログであり、この履歴はインポート開始以前から存在する情報のため意味が異なる。単なるマップ済み属性として通常の差分検出（`AttributeDiff`）の対象にする |
 | `bed_counts` | json, nullable | ✓ | 病床種別（療養／一般／精神等）→ 病床数のラベル付き辞書。元データが病棟ごとに分けて載せている同じ種別の病床は合計する。薬局は常にnull |
 | `department_categories` | json, nullable | ✓ | `App\Enums\DepartmentBaseCategory`値の配列（`AsEnumCollection`キャスト）。医科・歯科のみ、薬局は常に空配列。原本の診療科目欄は「基本診療科名＋自由な修飾語」の組み合わせ命名が医療法施行規則で公式に許容されており事実上自由記述に近いため、修飾語を含む完全一致ではなく「大分類（内科系・外科系など）のどれに該当するか」というマーカーマッチによる粗い分類に留めている（実データ検証で出現件数の96.3%を分類可能と確認済み。完全一致の復元は制度上原理的に不可能）。歯科の一覧の施設は、歯科の指定で標榜できるのが歯科系（歯科・小児歯科・矯正歯科・歯科口腔外科）だけのため、診療科目欄があれば常に`歯科`のみとする（略記「小歯」などを1文字の「小」→小児科のように誤分類しないため） |
-| `created_at` / `updated_at` | datetime | - | `updated_at`は施設データ（マップ済み属性）が実際に変わった時と、`facilities:geocode`で座標（`latitude`/`longitude`/`geocode_level`）が変わった時だけ更新される。座標を含めるのは、差分同期（`updated_since`）の利用者と一括ダウンロード（`rhb:export`）が座標の追加・変更を拾えるようにするため。取込のたびに行う`last_seen_rhb_dataset_download_id`の更新や、`facilities:renormalize`・`facilities:assign-municipalities`による派生カラムの再計算では変わらない（APIでも「施設情報の最終更新日時」として返しているため） |
+| `created_at` / `updated_at` | datetime | - | `updated_at`は施設データ（マップ済み属性）が実際に変わった時と、`facilities:geocode`で座標（`latitude`/`longitude`/`geocode_level`）が変わった時、`facilities:assign-opening-hours`でフリガナ・ホームページが変わった時だけ更新される。座標を含めるのは、差分同期（`updated_since`）の利用者と一括ダウンロード（`rhb:export`）が座標の追加・変更を拾えるようにするため。取込のたびに行う`last_seen_rhb_dataset_download_id`の更新や、`facilities:renormalize`・`facilities:assign-municipalities`による派生カラムの再計算では変わらない（APIでも「施設情報の最終更新日時」として返しているため） |
 
 インデックス: `institution_type`、`status`、`prefecture_code`、`name_normalized`、`address_normalized`、`(name_normalized, address_normalized)`（一覧APIの`q`の件数取得用。`LIKE '%語%'`はどのインデックスでも探索できず全行を調べるが、2列だけのこのインデックスをテーブルの代わりに読むため約3割速い）、`designated_on`（一覧APIの指定年月日による絞り込み・並び替え用）。`unique(bureau_code, prefecture_code, institution_type, facility_code)`、`unique(medical_institution_code)`。複合インデックス`medical_facilities_reconcile_index`（`institution_type`, `prefecture_code`, `status`, `last_seen_rhb_dataset_download_id`）は廃業検知クエリ用——`prefecture_code`を含むのは、1件の`rhb_dataset_downloads`行が複数県をまとめて束ねる局（東北・関東信越等）が存在するため、廃業検知が誤って別県の施設まで対象にしないためのスコープ絞り込み。
 
@@ -114,6 +116,8 @@ CSVを更新してシーダーを再実行したあとは、`facilities:assign-m
 | `latitude` / `longitude` | decimal(10,6) / null | 元データの所在地座標。「0.0」はnull |
 | `closures` | json / null | 定休日 `{weekly: ["sun"], monthly: [{week: 2, day: "wed"}], holidays: bool|null, other: string|null}`。元データの「毎週決まった曜日に休診」などの列は、名前に反して**1が診療・0が休診**（定義書のとおり）。`monthly`は毎週の休みと重なる曜日を除く。`other`は自由記述（元データの「（改行）」は改行にする）。該当する列がすべて空ならnull |
 | `published_on` | date | 元データの公開時点（例: 2026-06-01） |
+| `name_kana` | string / null | 元データの施設名のフリガナ（「正式名称（フリガナ）」、薬局は「フリガナ」）。表記のまま |
+| `website_url` | string(500) / null | 元データのホームページ（「案内用ホームページアドレス」、薬局は「薬局のホームページアドレス」）を、リンクとして返せる形にしたもの（`App\Services\MedicalInfoNet\WebsiteUrl`）。約7%ある崩れた値のうち、スキームのないもの（`www.example.jp`）と「:」の抜けたもの（`http//`）は直し、それ以外（「ﾅｼ」など）や`http`・`https`以外は捨てる |
 | `created_at` / `updated_at` | datetime | |
 
 インデックス: `(municipality_code, institution_type)`、`source_id`。取り込むと、座標が町丁目・医療情報ネット・国土数値情報・なしの施設の`geocoded_address`を空にし、次の`facilities:geocode`で付け直す（`updated_at`は座標が実際に変わった施設だけ動く）。

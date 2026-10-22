@@ -49,6 +49,20 @@ class ShowMedicalFacilityControllerTest extends TestCase
         $response->assertJsonMissingPath('data.longitude');
     }
 
+    public function test_returns_the_name_reading_and_website_from_the_medical_info_net(): void
+    {
+        $facility = MedicalFacility::factory()->create();
+        MedicalFacility::query()->whereKey($facility->id)->toBase()->update(['name_kana' => 'マルノウチクリニック', 'website_url' => 'https://marunouchi-clinic.jp/']);
+        $unmatched = MedicalFacility::factory()->create();
+
+        $this->getJson("/api/v1/medical-facilities/{$facility->id}")
+            ->assertJsonPath('data.name_kana', 'マルノウチクリニック')
+            ->assertJsonPath('data.website_url', 'https://marunouchi-clinic.jp/');
+        $this->getJson("/api/v1/medical-facilities/{$unmatched->id}")
+            ->assertJsonPath('data.name_kana', null)
+            ->assertJsonPath('data.website_url', null);
+    }
+
     public function test_includes_attribution_meta(): void
     {
         $facility = MedicalFacility::factory()->create();
