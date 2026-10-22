@@ -90,6 +90,8 @@ class ExportMedicalFacilitiesTest extends TestCase
         $this->assertSame('内科|眼科', $row['department_categories']);
         $this->assertSame('2026-08-01', $row['e_prescription_started_on']);
         $this->assertSame('', $row['e_prescription_refill_started_on']);
+        // Columns added later come last, so reading by position keeps working.
+        $this->assertSame(['e_prescription_started_on', 'e_prescription_refill_started_on'], array_slice($header, -2));
         $this->assertArrayNotHasKey('founder_name', $row);
     }
 

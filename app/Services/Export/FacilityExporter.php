@@ -56,8 +56,9 @@ final class FacilityExporter
         'latitude', 'longitude', 'geocode_level_code', 'geocode_level', 'phone_number',
         'designated_on', 'designation_history', 'bed_counts',
         'department_category_codes', 'department_categories',
-        'e_prescription_started_on', 'e_prescription_refill_started_on',
         'created_at', 'updated_at',
+        // Added later, so at the end: a client reading by position keeps working.
+        'e_prescription_started_on', 'e_prescription_refill_started_on',
     ];
 
     public function __construct(
@@ -223,9 +224,9 @@ final class FacilityExporter
             $row['bed_counts'] === null ? null : json_encode($row['bed_counts'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
             $departments->map(fn (DepartmentBaseCategory $category): int => $category->value)->implode('|'),
             $departments->map(fn (DepartmentBaseCategory $category): string => $category->label())->implode('|'),
-            $row['e_prescription']['started_on'] ?? null, $row['e_prescription']['refill_started_on'] ?? null,
             $row['created_at']?->toJSON(),
             $row['updated_at']?->toJSON(),
+            $row['e_prescription']['started_on'] ?? null, $row['e_prescription']['refill_started_on'] ?? null,
         ];
     }
 
