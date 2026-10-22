@@ -49,6 +49,12 @@ class MedicalFacilityStatsControllerTest extends TestCase
         MedicalFacility::factory()->count(2)->create(['e_prescription_started_on' => '2026-08-01']);
         MedicalFacility::factory()->create();
 
+        $this->getJson('/api/v1/stats/facilities?group_by=municipality&e_prescription=true')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 2);
+        $this->getJson('/api/v1/stats/facilities?group_by=municipality&e_prescription=false')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1);
         $this->getJson('/api/v1/stats/facilities?group_by=municipality&e_prescription=1')
             ->assertOk()
             ->assertJsonPath('meta.total', 2);
