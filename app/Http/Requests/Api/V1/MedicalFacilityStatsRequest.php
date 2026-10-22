@@ -8,6 +8,7 @@ use App\Enums\InstitutionType;
 use App\Enums\MedicalFacilityStatus;
 use App\Enums\Prefecture;
 use App\Http\Requests\Api\V1\Concerns\NamesParametersAsIs;
+use App\Http\Requests\Api\V1\Concerns\ReadsBooleanWords;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
@@ -17,6 +18,7 @@ use Illuminate\Validation\Validator;
 class MedicalFacilityStatsRequest extends FormRequest
 {
     use NamesParametersAsIs;
+    use ReadsBooleanWords;
 
     /** Monthly buckets are returned for every month in the range, so it is capped. */
     public const int MAX_MONTHS = 60;
@@ -43,6 +45,14 @@ class MedicalFacilityStatsRequest extends FormRequest
     public function authorize(): bool
     {
         return true;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function booleanParameters(): array
+    {
+        return ['e_prescription'];
     }
 
     /**
@@ -81,7 +91,7 @@ class MedicalFacilityStatsRequest extends FormRequest
             'designation_reason' => ['sometimes', 'string', 'encoding:UTF-8', 'max:20'],
 
             /**
-             * 電子処方箋への対応。`1` で対応している施設だけ、`0` で対応していない施設だけ
+             * 電子処方箋への対応。`true` で対応している施設だけ、`false` で対応していない施設だけ（`1` / `0` も可）
              * （厚生労働省の対応施設リストにあるか。毎週更新）
              */
             'e_prescription' => ['sometimes', 'boolean'],

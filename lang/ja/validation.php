@@ -13,7 +13,7 @@ return [
         'numeric' => ':attribute は :min 以上 :max 以下にしてください。',
         'string' => ':attribute は :min 文字以上 :max 文字以下にしてください。',
     ],
-    'boolean' => ':attribute は 1 か 0 にしてください。',
+    'boolean' => ':attribute は true か false（1 か 0 も可）にしてください。',
     'date' => ':attribute は正しい日付にしてください。',
     'date_format' => ':attribute は :format の形式にしてください（例: 2026-10-01）。',
     'encoding' => ':attribute は :encoding で指定してください。',
