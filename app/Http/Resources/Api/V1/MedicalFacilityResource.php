@@ -76,6 +76,12 @@ class MedicalFacilityResource extends JsonResource
              */
             'name' => $this->name,
             /**
+             * 施設名のフリガナ（厚生労働省「医療情報ネット」の表記を、全角カタカナにそろえたもの。法人名を含むことがある）。医療情報ネットと照合できない施設はnull
+             *
+             * @example トウキョウシカダイガクスイドウバシビョウイン
+             */
+            'name_kana' => $this->name_kana,
+            /**
              * 都道府県コード（JIS X 0401の2桁）。`prefecture.code` と同じ値
              *
              * @example 13
@@ -142,6 +148,13 @@ class MedicalFacilityResource extends JsonResource
              * @example 03-3262-3421
              */
             'phone_number' => $this->phone_number,
+            /**
+             * 施設のホームページ（厚生労働省「医療情報ネット」に載っているもの。`http://` か `https://` で始まる）。
+             * 載っていないか、医療情報ネットと照合できない施設はnull
+             *
+             * @example http://www.tdc.ac.jp/sh/tabid/233/Default.aspx
+             */
+            'website_url' => $this->website_url,
             /**
              * 指定年月日（YYYY-MM-DD）。最初に指定された日で、6年ごとの指定の更新では変わらない
              *

@@ -71,6 +71,7 @@ class ExportMedicalFacilitiesTest extends TestCase
             'bed_counts' => ['一般' => 19],
             'department_categories' => [DepartmentBaseCategory::InternalMedicine, DepartmentBaseCategory::Ophthalmology],
             'e_prescription_started_on' => '2026-08-01',
+            'name_kana' => 'シンリョウジョ チュウオウ',
         ]);
 
         $this->artisan('rhb:export')->assertExitCode(0);
@@ -90,8 +91,10 @@ class ExportMedicalFacilitiesTest extends TestCase
         $this->assertSame('内科|眼科', $row['department_categories']);
         $this->assertSame('2026-08-01', $row['e_prescription_started_on']);
         $this->assertSame('', $row['e_prescription_refill_started_on']);
+        $this->assertSame('シンリョウジョ チュウオウ', $row['name_kana']);
+        $this->assertSame('', $row['website_url']);
         // Columns added later come last, so reading by position keeps working.
-        $this->assertSame(['e_prescription_started_on', 'e_prescription_refill_started_on'], array_slice($header, -2));
+        $this->assertSame(['e_prescription_started_on', 'e_prescription_refill_started_on', 'name_kana', 'website_url'], array_slice($header, -4));
         $this->assertArrayNotHasKey('founder_name', $row);
     }
 

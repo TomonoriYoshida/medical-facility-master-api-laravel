@@ -366,6 +366,18 @@ docker compose run --rm scheduler php artisan e-prescriptions:import
 - 対応している施設（ローカルでは92,256件）の `updated_at` が動きます。一括ダウンロードは翌朝の `rhb:export` で作り直されます。
 - リストの共有文字列が多く、PHP の既定のメモリ上限（128MB）に近いため、コマンドの中で上限を256MBに上げています。
 
+### 施設のフリガナ・ホームページ（初回）
+
+施設のフリガナ（`name_kana`）とホームページ（`website_url`）を返す版へ初めて更新したときは、`migrate` の後に次を一度だけ実行します。医療情報ネットの取り込み直し（約1分）と照合（数分）で、医療情報ネットと照合できた施設に値が入ります。
+
+```bash
+docker compose run --rm scheduler php artisan medical-info-net:import --force
+docker compose run --rm scheduler php artisan facilities:assign-opening-hours --force
+```
+
+- 値が入った施設（ローカルでは約19万件）の `updated_at` が動きます。一括ダウンロードは翌朝の `rhb:export` で作り直されます。
+- `medical-info-net:import --force` は、座標が町丁目・医療情報ネット・国土数値情報・なしの施設を、次の 06:30 の `facilities:geocode` で付け直す対象にします（座標が実際に変わった施設だけ `updated_at` が動きます）。
+
 ## 4. バックアップ
 
 `medical_facility_events`（開業・廃止などの変更履歴）は、取込を重ねて記録していくデータです。各局の公開データから作り直せないので、定期的にバックアップします。

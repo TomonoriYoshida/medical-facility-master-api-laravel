@@ -35,7 +35,7 @@ class MedicalFacilityOpeningHoursControllerTest extends TestCase
         // In a fixed key order, though MySQL reorders stored JSON objects.
         $this->assertSame(['weekly', 'monthly', 'holidays', 'other'], array_keys($response->json('data.closures')));
         $this->assertSame(['day', 'opens', 'closes', 'reception_opens', 'reception_closes'], array_keys($response->json('data.schedules.0.slots.0.days.0')));
-        $response->assertJsonPath('meta.attribution.medical_info_net_source.name', '厚生労働省「医療情報ネット」のオープンデータ（所在地座標・診療時間・休診日）を加工して作成');
+        $response->assertJsonPath('meta.attribution.medical_info_net_source.name', '厚生労働省「医療情報ネット」のオープンデータ（所在地座標・診療時間・休診日・フリガナ・ホームページ）を加工して作成');
         $response->assertHeader('Cache-Control', 'max-age=3600, public');
     }
 

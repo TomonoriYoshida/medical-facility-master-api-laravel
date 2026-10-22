@@ -41,6 +41,31 @@ class AssignOpeningHoursTest extends TestCase
         );
     }
 
+    public function test_a_matched_facility_gets_its_name_reading_and_website_and_its_updated_at_moves(): void
+    {
+        $facility = $this->facility();
+        $this->location('丸の内クリニック', ['name_kana' => 'マルノウチクリニック', 'website_url' => 'https://marunouchi-clinic.jp/']);
+        $this->travelTo(now()->setDate(2026, 10, 22));
+
+        $this->artisan('facilities:assign-opening-hours')->assertExitCode(0);
+
+        $facility->refresh();
+        $this->assertSame(['マルノウチクリニック', 'https://marunouchi-clinic.jp/'], [$facility->name_kana, $facility->website_url]);
+        $this->assertSame('2026-10-22', $facility->updated_at->toDateString());
+    }
+
+    public function test_a_facility_that_loses_its_match_loses_its_name_reading_and_website(): void
+    {
+        $facility = $this->facility(['name' => '別のクリニック', 'medical_info_net_id' => 'stale']);
+        MedicalFacility::query()->whereKey($facility->id)->toBase()->update(['name_kana' => 'ベツノクリニック', 'website_url' => 'https://example.jp/']);
+
+        $this->artisan('facilities:assign-opening-hours')->assertExitCode(0);
+
+        $facility->refresh();
+        $this->assertSame([null, null], [$facility->name_kana, $facility->website_url]);
+        $this->assertNotSame('2026-01-01 00:00:00', $facility->updated_at->toDateTimeString());
+    }
+
     public function test_a_facility_listed_as_without_outpatients_keeps_its_match_but_gets_no_opening_periods(): void
     {
         $facility = $this->facility();

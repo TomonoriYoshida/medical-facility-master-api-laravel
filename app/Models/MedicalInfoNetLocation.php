@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 /**
  * @property array{weekly: list<'mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun'>, monthly: list<array{week: int, day: 'mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun'}>, holidays: bool|null, other: string|null}|null $closures as MedicalInfoNetHours::closures() builds them
  */
-#[Fillable(['source_id', 'institution_type', 'municipality_code', 'name_key', 'address_key', 'latitude', 'longitude', 'closures', 'published_on'])]
+#[Fillable(['source_id', 'institution_type', 'municipality_code', 'name_key', 'address_key', 'latitude', 'longitude', 'closures', 'published_on', 'name_kana', 'website_url'])]
 class MedicalInfoNetLocation extends Model
 {
     /** @use HasFactory<MedicalInfoNetLocationFactory> */
