@@ -176,6 +176,18 @@ class MedicalFacilityResource extends JsonResource
                 ?->map(fn (DepartmentBaseCategory $category): array => $this->codeAndLabel($category))
                 ->values() ?? [],
             /**
+             * 電子処方箋への対応（厚生労働省の対応施設リスト。毎週更新）。`started_on` は電子処方箋の運用開始日、
+             * `refill_started_on` はリフィル処方箋を電子処方箋で扱い始めた日（扱っていなければnull）。リストにない施設はnull
+             *
+             * @var array{started_on: string, refill_started_on: string|null}|null
+             *
+             * @example {"started_on": "2026-08-01", "refill_started_on": null}
+             */
+            'e_prescription' => $this->e_prescription_started_on === null ? null : [
+                'started_on' => $this->e_prescription_started_on->toDateString(),
+                'refill_started_on' => $this->e_prescription_refill_started_on?->toDateString(),
+            ],
+            /**
              * このAPIに施設を初めて取り込んだ日時（開業日ではない）
              *
              * @example 2026-09-23T20:15:48.000000Z
