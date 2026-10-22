@@ -22,6 +22,7 @@ scheduler は毎日（日本時間）次の順に実行します。
 | 05:00 | `rhb:download` | 各局の一覧ページを確認し、新しい版を取得 |
 | 05:30 | `rhb:import` | 取込ジョブをキューに投入（worker が実行） |
 | 毎月3日 04:40 | `population:import` | 総務省の市区町村別人口（住民基本台帳）を取り込む（年1回の公開時だけ。集計APIの人口あたりの件数に使う） |
+| 毎週土曜 04:20 | `e-prescriptions:import` | 厚生労働省の電子処方箋の対応施設リストを取り込む（毎週金曜の更新の翌朝。取り込み済みの版は飛ばす。日付が変わった施設だけ `updated_at` が動く） |
 | 毎月2日 04:30 | `medical-info-net:import` | 厚生労働省「医療情報ネット」の座標を取り込む（年2回の公開時だけ。取り込むと、町丁目レベルの施設を次の `facilities:geocode` で付け直す） |
 | 06:30 | `facilities:geocode` | 新規・移転した施設の座標を住所から求める（アドレス・ベース・レジストリのファイルを `storage-app` ボリュームに保存し、変わったものだけ再取得） |
 | 07:00 | `rhb:status` | すべての局・カテゴリが取込済みで最新かを確認 |
@@ -130,6 +131,7 @@ docker compose exec scheduler php artisan rhb:import --wait
 docker compose exec scheduler php artisan medical-info-net:import   # 医療情報ネットの座標（約20秒）
 docker compose exec scheduler php artisan national-land:import      # 国土数値情報の位置（約1分）
 docker compose exec scheduler php artisan population:import         # 市区町村別の人口（数秒）
+docker compose exec scheduler php artisan e-prescriptions:import     # 電子処方箋の対応施設（約15秒）
 docker compose exec scheduler php artisan facilities:geocode   # 座標を付与
 docker compose exec scheduler php artisan rhb:export        # 一括ダウンロードのファイルを作成
 ```
@@ -352,6 +354,17 @@ docker compose run --rm scheduler php artisan facilities:geocode --all
 - アドレス・ベース・レジストリのファイルは `storage-app` ボリュームに残っているため、取得し直すのは変わったものだけです。ただし、住居表示が一部だけの町字がある市区町村では、それまで使っていなかった地番のファイルを新しく取得します。
 - 座標が変わった施設だけ `updated_at` が動きます。一括ダウンロードは翌朝の `rhb:export` で作り直されます。
 - 大阪府（指定中 18,697件）では、番地レベル（`geocode_level` 1〜4）が16,015件から16,835件に、座標のない施設が247件から17件になりました（更新前はローカル、更新後は本番の件数）。
+
+### 電子処方箋の対応施設（初回）
+
+電子処方箋への対応を含む版へ初めて更新したときは、`migrate` の後に次を一度だけ実行します（約15秒）。以降は scheduler が毎週土曜 04:20 に取り込みます。
+
+```bash
+docker compose run --rm scheduler php artisan e-prescriptions:import
+```
+
+- 対応している施設（ローカルでは92,256件）の `updated_at` が動きます。一括ダウンロードは翌朝の `rhb:export` で作り直されます。
+- リストの共有文字列が多く、PHP の既定のメモリ上限（128MB）に近いため、コマンドの中で上限を256MBに上げています。
 
 ### 施設のフリガナ・ホームページ（初回）
 

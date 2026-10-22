@@ -33,6 +33,10 @@ trait FiltersMedicalFacilities
             ->when($filters['designated_to'] ?? null, fn ($query, $date) => $query->where($column('designated_on'), '<=', $date))
             // updated_at is stored in UTC; the given offset, if any, is honored.
             ->when($filters['updated_since'] ?? null, fn ($query, $since) => $query->where($column('updated_at'), '>=', Carbon::parse($since)->utc()))
-            ->when($filters['designation_reason'] ?? null, fn ($query, $reason) => $query->whereJsonContains($column('designation_history'), ['reason' => $reason]));
+            ->when($filters['designation_reason'] ?? null, fn ($query, $reason) => $query->whereJsonContains($column('designation_history'), ['reason' => $reason]))
+            // "0" is a filter too (the facilities that do not use it), so not when()'s truthiness.
+            ->when(isset($filters['e_prescription']), fn ($query) => filter_var($filters['e_prescription'], FILTER_VALIDATE_BOOL)
+                ? $query->whereNotNull($column('e_prescription_started_on'))
+                : $query->whereNull($column('e_prescription_started_on')));
     }
 }

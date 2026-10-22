@@ -34,6 +34,15 @@ class ScheduledTasksTest extends TestCase
         $this->assertSame('Asia/Tokyo', $event->timezone);
     }
 
+    public function test_e_prescriptions_import_is_scheduled_weekly_after_the_fridays_update(): void
+    {
+        $event = $this->findEvent('e-prescriptions:import');
+
+        $this->assertNotNull($event);
+        $this->assertSame('20 4 * * 6', $event->expression);
+        $this->assertSame('Asia/Tokyo', $event->timezone);
+    }
+
     public function test_rhb_export_is_scheduled_after_the_import_jobs_have_finished(): void
     {
         $event = $this->findEvent('rhb:export');

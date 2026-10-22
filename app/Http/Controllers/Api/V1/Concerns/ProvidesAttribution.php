@@ -48,6 +48,11 @@ trait ProvidesAttribution
                 'name' => '総務省「住民基本台帳に基づく人口、人口動態及び世帯数」（市区町村別）を加工して作成',
                 'url' => 'https://www.soumu.go.jp/main_sosiki/jichi_gyousei/daityo/jinkou_jinkoudoutai-setaisuu.html',
             ],
+            // 電子処方箋への対応の出典（厚生労働省、PDL1.0）。施設の e_prescription と一覧APIの絞り込みに使う。
+            'e_prescription_source' => [
+                'name' => '厚生労働省「電子処方せん対応の医療機関・薬局リスト」を加工して作成',
+                'url' => 'https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/denshishohousen_taioushisetsu.html',
+            ],
             // 祝日の出典（内閣府、政府標準利用規約・CC BY 4.0 互換）。祝日APIと、一覧APIの open_at に使う。
             'holiday_source' => [
                 'name' => '内閣府「国民の祝日について」の祝日一覧（CSV）を加工して作成',

@@ -58,6 +58,7 @@ final class FacilityExporter
         'department_category_codes', 'department_categories',
         'created_at', 'updated_at',
         // Added later, so at the end: a client reading by position keeps working.
+        'e_prescription_started_on', 'e_prescription_refill_started_on',
         'name_kana', 'website_url',
     ];
 
@@ -226,6 +227,7 @@ final class FacilityExporter
             $departments->map(fn (DepartmentBaseCategory $category): string => $category->label())->implode('|'),
             $row['created_at']?->toJSON(),
             $row['updated_at']?->toJSON(),
+            $row['e_prescription']['started_on'] ?? null, $row['e_prescription']['refill_started_on'] ?? null,
             $row['name_kana'], $row['website_url'],
         ];
     }

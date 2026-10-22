@@ -49,6 +49,20 @@ class ShowMedicalFacilityControllerTest extends TestCase
         $response->assertJsonMissingPath('data.longitude');
     }
 
+    public function test_returns_the_e_prescription_start_dates_or_null(): void
+    {
+        $usesIt = MedicalFacility::factory()->create([
+            'e_prescription_started_on' => '2026-08-01',
+            'e_prescription_refill_started_on' => '2026-09-15',
+        ]);
+        $doesNot = MedicalFacility::factory()->create();
+
+        $this->getJson("/api/v1/medical-facilities/{$usesIt->id}")
+            ->assertJsonPath('data.e_prescription', ['started_on' => '2026-08-01', 'refill_started_on' => '2026-09-15'])
+            ->assertJsonPath('meta.attribution.e_prescription_source.url', 'https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/denshishohousen_taioushisetsu.html');
+        $this->getJson("/api/v1/medical-facilities/{$doesNot->id}")->assertJsonPath('data.e_prescription', null);
+    }
+
     public function test_returns_the_name_reading_and_website_from_the_medical_info_net(): void
     {
         $facility = MedicalFacility::factory()->create();

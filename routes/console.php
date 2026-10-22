@@ -30,6 +30,13 @@ Schedule::command('medical-info-net:import')
     ->timezone('Asia/Tokyo')
     ->withoutOverlapping();
 
+// The MHLW updates its list of the facilities using 電子処方箋 weekly, usually
+// on Fridays; a list already imported is skipped.
+Schedule::command('e-prescriptions:import')
+    ->weeklyOn(6, '04:20')
+    ->timezone('Asia/Tokyo')
+    ->withoutOverlapping();
+
 // The 住民基本台帳人口 (as of January 1) is published once a year, around
 // summer; an edition already imported is skipped, so checking monthly is enough.
 Schedule::command('population:import')

@@ -80,6 +80,12 @@ class MedicalFacilityStatsRequest extends FormRequest
              */
             'designation_reason' => ['sometimes', 'string', 'encoding:UTF-8', 'max:20'],
 
+            /**
+             * 電子処方箋への対応。`1` で対応している施設だけ、`0` で対応していない施設だけ
+             * （厚生労働省の対応施設リストにあるか。毎週更新）
+             */
+            'e_prescription' => ['sometimes', 'boolean'],
+
             /** 指定年月日がこの日以降（YYYY-MM-DD）。`group_by=month` では必須 */
             // No `sometimes` here: it would skip requiredIf when the field is absent.
             'designated_from' => [
