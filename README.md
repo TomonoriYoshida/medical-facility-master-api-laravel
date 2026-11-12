@@ -129,7 +129,7 @@ GET /api/v1/medical-facilities?designated_from=2026-08-01&designated_to=2026-08-
       "license": { "name": "公共データ利用規約（第1.0版）", "url": "https://www.digital.go.jp/…" },
       "disclaimer": "データの正確性・完全性は保証しません。…",
       "sources": [ /* 8局の出典URL */ ],
-      "address_source": { "name": "アドレス・ベース・レジストリ（デジタル庁）…", "url": "https://catalog.registries.digital.go.jp/rc/dataset/" }
+      "address_source": { "name": "アドレス・ベース・レジストリ（デジタル庁）…", "url": "https://www.digital.go.jp/policies/base_registry_address" }
     }
   }
 }
@@ -435,7 +435,7 @@ vendor/bin/sail php vendor/bin/phpstan analyse --memory-limit=1G   # 静的解�
 
 各局の出典URLは、すべてのレスポンスの `meta.attribution.sources` に含めています。
 
-市区町村（`municipality`）と座標（`location`）は、デジタル庁の[アドレス・ベース・レジストリ](https://catalog.registries.digital.go.jp/rc/dataset/)（CC BY 4.0）を加工して作成しています。出典は `meta.attribution.address_source` にあります。町丁目までしか求められない施設の座標と、施設の診療時間・休診日・フリガナ（`name_kana`）・ホームページ（`website_url`）は、厚生労働省の[医療情報ネットのオープンデータ](https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/newpage_43373.html)（PDL1.0）を加工して作成しています（`meta.attribution.medical_info_net_source`）。そのどちらでも町丁目までしか求められない病院・診療所・歯科診療所の座標は、国土交通省の[国土数値情報（医療機関データ）](https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-P04-2020.html)（CC BY 4.0）を加工して作成しています（`meta.attribution.national_land_source`）。集計APIの市区町村の人口（`population`）は、総務省の[住民基本台帳に基づく人口、人口動態及び世帯数](https://www.soumu.go.jp/main_sosiki/jichi_gyousei/daityo/jinkou_jinkoudoutai-setaisuu.html)（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.population_source`）。施設の電子処方箋への対応（`e_prescription`）は、厚生労働省の[電子処方せん対応の医療機関・薬局リスト](https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/denshishohousen_taioushisetsu.html)（PDL1.0）を加工して作成しています（`meta.attribution.e_prescription_source`）。祝日（`/api/v1/holidays`、`open_at` の判定）は、内閣府の[「国民の祝日について」](https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html)の祝日一覧（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.holiday_source`）。
+市区町村（`municipality`）と座標（`location`）は、デジタル庁の[アドレス・ベース・レジストリ](https://www.digital.go.jp/policies/base_registry_address)（CC BY 4.0）を加工して作成しています。出典は `meta.attribution.address_source` にあります。町丁目までしか求められない施設の座標と、施設の診療時間・休診日・フリガナ（`name_kana`）・ホームページ（`website_url`）は、厚生労働省の[医療情報ネットのオープンデータ](https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/newpage_43373.html)（PDL1.0）を加工して作成しています（`meta.attribution.medical_info_net_source`）。そのどちらでも町丁目までしか求められない病院・診療所・歯科診療所の座標は、国土交通省の[国土数値情報（医療機関データ）](https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-P04-2020.html)（CC BY 4.0）を加工して作成しています（`meta.attribution.national_land_source`）。集計APIの市区町村の人口（`population`）は、総務省の[住民基本台帳に基づく人口、人口動態及び世帯数](https://www.soumu.go.jp/main_sosiki/jichi_gyousei/daityo/jinkou_jinkoudoutai-setaisuu.html)（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.population_source`）。施設の電子処方箋への対応（`e_prescription`）は、厚生労働省の[電子処方せん対応の医療機関・薬局リスト](https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/denshishohousen_taioushisetsu.html)（PDL1.0）を加工して作成しています（`meta.attribution.e_prescription_source`）。祝日（`/api/v1/holidays`、`open_at` の判定）は、内閣府の[「国民の祝日について」](https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html)の祝日一覧（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.holiday_source`）。
 
 - **免責**: データの正確性・完全性は保証しません。最新かつ正確な情報は、各地方厚生局の公表資料を確認してください。
 - **個人名は提供しません**: 元データの開設者名・管理者名は個人名を含むため、APIでは返しません。
