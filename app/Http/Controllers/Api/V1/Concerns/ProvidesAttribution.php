@@ -31,7 +31,7 @@ trait ProvidesAttribution
             // 市区町村・座標の出典（デジタル庁 アドレス・ベース・レジストリ、CC BY 4.0）。
             'address_source' => [
                 'name' => 'アドレス・ベース・レジストリ（デジタル庁）の市区町村・町字・住居表示・地番の各マスターと位置参照データを加工して作成',
-                'url' => 'https://catalog.registries.digital.go.jp/rc/dataset/',
+                'url' => 'https://www.digital.go.jp/policies/base_registry_address',
             ],
             // 町丁目までしか求められない施設の座標と、施設の診療時間・フリガナ・ホームページの出典（厚生労働省、PDL1.0）。
             'medical_info_net_source' => [
