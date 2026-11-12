@@ -189,11 +189,15 @@ docker compose up -d app   # マウントを追加した初回だけ必要
 cd medical-facility-master-api-laravel
 git pull
 docker compose build --pull
+docker compose pull mysql
 docker compose run --rm scheduler php artisan migrate --force
 docker compose up -d
 ```
 
 - `--pull` は、Dockerfile の元のイメージ（`dunglas/frankenphp:1-php8.5-trixie`）を毎回取り直すためのものです。付けないと手元に残った古いイメージが使われ続け、PHP のセキュリティ修正が入りません。
+- `docker compose pull mysql` は、MySQL のイメージ（`mysql:8.4`）を取り直します。`build --pull` は自分で作るイメージにしか効かないため、これがないと MySQL は最初に取得した版のまま、MySQL 本体と OS のパッケージの修正が入りません（2026-11 に確認したとき、本番は 9月のイメージ（8.4.11）のままでした。最新版（8.4.13）は、9月のイメージより HIGH の脆弱性が約50件少なくなっています）。
+  - 新しい版があったときだけ、`up -d` が mysql を作り直します。8.4 の中での更新なので、データの形式の更新は起動時に自動で行われます（約15秒）。その間の30秒〜1分ほどは API が 500 を返し、worker は DB との接続が切れて終了し、自動で起動し直します。
+  - 作り直す前に、念のため `~/backup-db.sh` でバックアップを取っておくと安全です（「4. バックアップ」）。
 - worker は、実行中のジョブが終わるまで最大10分待ってから停止します（`stop_grace_period`）。取込の時間帯（05:00〜06:00 頃）を避けると、すぐに切り替わります。
 - 設定（config）とルートのキャッシュは、コンテナの起動時に作り直されます。`.env` を変えた場合も `docker compose up -d` で反映されます。
 

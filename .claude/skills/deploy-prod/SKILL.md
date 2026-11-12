@@ -27,10 +27,11 @@ description: "Deploy merged main of this API to the production Oracle A1 server 
 ## 2. デプロイ
 
 ```bash
-ssh ubuntu@168.110.42.30 'cd ~/medical-facility-master-api-laravel && git pull --ff-only && docker compose build --pull && docker compose run --rm scheduler php artisan migrate --force && docker compose up -d'
+ssh ubuntu@168.110.42.30 'cd ~/medical-facility-master-api-laravel && git pull --ff-only && docker compose build --pull && docker compose pull mysql && ~/backup-db.sh && docker compose run --rm scheduler php artisan migrate --force && docker compose up -d'
 ```
 
 - `build` には必ず `--pull` を付ける。付けないとサーバーに残った古い FrankenPHP のイメージで作られ、PHP の更新（セキュリティ修正を含む）が入らない。
+- `docker compose pull mysql` で MySQL のイメージも取り直す（`build --pull` は mysql に効かない）。新しい版があると `up -d` で mysql が作り直され、30秒〜1分ほど API が 500 を返す。新しい版があったかは `pull` の出力（どちらも「Pulled」）では見分けられないので、migrate と mysql の作り直しの前に、毎回 `~/backup-db.sh`（約10秒）でバックアップを取る。
 - `git pull --ff-only` が失敗したら、サーバーで手作業の変更がないか確かめ、ユーザーに相談する。
 - 続けて、1-3 で洗い出した一度だけの作業を、PR に書いた順で実行する。
 - 一度だけの作業のうち、`up -d` より前に済ませるもの（PR の「デプロイ」欄にそう書いたもの。例：新しい DB ユーザーの作成）は、上のコマンドの前に行う。
