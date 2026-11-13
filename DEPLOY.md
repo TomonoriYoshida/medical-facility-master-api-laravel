@@ -196,7 +196,7 @@ docker compose up -d
 
 - `--pull` は、Dockerfile の元のイメージ（`dunglas/frankenphp:1-php8.5-trixie`）を毎回取り直すためのものです。付けないと手元に残った古いイメージが使われ続け、PHP のセキュリティ修正が入りません。
   - ビルドでは OS のパッケージも最新にします（Dockerfile の `apt-get upgrade`）。元のイメージより後に出た Debian のセキュリティ修正も、ビルドのたびに入ります。
-  - **コードに変更がなくても、月に1回はこの手順でデプロイ**してください。イメージはビルドした時点のまま古くなっていくため、作り直さないと PHP・OS・MySQL の修正が入りません。
+  - **コードに変更がなくても、月に1回はこの手順でデプロイ**してください。イメージはビルドした時点のまま古くなっていくため、作り直さないと PHP・OS・MySQL の修正が入りません。手順と確かめ方は [REBUILD.md](REBUILD.md) にまとめています。
 - 本番のイメージには composer と unzip を入れていません（composer はビルドの間だけ使います）。サーバーで composer を使う作業はありません。
 - Web のコンテナ（app）の PHP は、外部のプログラムを実行する関数（`exec`・`shell_exec`・`proc_open` など）を使えません（`compose.production.yaml` の `FRANKENPHP_CONFIG`）。リクエストの処理に弱点があっても、そこからシェルを動かされないためです。`docker compose exec app php artisan ...` などのコマンドラインの PHP には効きません。
 - `docker compose pull mysql` は、MySQL のイメージ（`mysql:8.4`）を取り直します。`build --pull` は自分で作るイメージにしか効かないため、これがないと MySQL は最初に取得した版のまま、MySQL 本体と OS のパッケージの修正が入りません（2026-11 に確認したとき、本番は 9月のイメージ（8.4.11）のままでした。最新版（8.4.13）は、9月のイメージより HIGH の脆弱性が約50件少なくなっています）。
