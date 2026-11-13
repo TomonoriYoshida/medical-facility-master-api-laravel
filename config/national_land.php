@@ -20,4 +20,21 @@ return [
     // One zip per prefecture; {prefecture} is its two-digit code.
     'file_url' => 'https://nlftp.mlit.go.jp/ksj/gml/data/P04/P04-20/P04-20_{prefecture}_GML.zip',
 
+    /*
+    |--------------------------------------------------------------------------
+    | 国土数値情報「鉄道」(MLIT) data
+    |--------------------------------------------------------------------------
+    |
+    | The stations of every railway line in Japan, published yearly as one
+    | nationwide file. Imported by stations:import for the station search,
+    | which turns a station name into a position to search near. Published
+    | under CC BY 4.0. Point both URLs at a newer edition to update it.
+    |
+    */
+
+    'stations' => [
+        'page_url' => 'https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-2025.html',
+        'file_url' => 'https://nlftp.mlit.go.jp/ksj/gml/data/N02/N02-25/N02-25_GML.zip',
+    ],
+
 ];

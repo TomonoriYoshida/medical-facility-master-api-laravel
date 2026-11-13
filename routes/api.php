@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\MedicalFacilityOpeningHoursController;
 use App\Http\Controllers\Api\V1\MedicalFacilityStatsController;
 use App\Http\Controllers\Api\V1\OptionController;
 use App\Http\Controllers\Api\V1\PublicHolidayController;
+use App\Http\Controllers\Api\V1\RailwayStationController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->name('api.v1.')->group(function (): void {
@@ -36,6 +37,10 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
     Route::get('holidays', PublicHolidayController::class)
         ->middleware('cache.headers:public;max_age=86400;etag')
         ->name('holidays');
+    // Imported by hand once a year.
+    Route::get('stations', RailwayStationController::class)
+        ->middleware('cache.headers:public;max_age=86400;etag')
+        ->name('stations.index');
     // Fixed values that change only with a deploy, so clients may cache them.
     Route::get('options', OptionController::class)
         ->middleware('cache.headers:public;max_age=86400;etag')

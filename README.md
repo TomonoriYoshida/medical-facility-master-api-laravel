@@ -38,6 +38,7 @@
 | GET | `/api/v1/stats/facilities` | 施設数の集計（月・市区町村・診療科目ごと） |
 | GET | `/api/v1/stats/facility-events` | 新規・廃止の件数の集計（月・市区町村ごと） |
 | GET | `/api/v1/holidays` | 祝日の一覧（内閣府の「国民の祝日」） |
+| GET | `/api/v1/stations` | 駅の検索（駅名から位置。国土交通省「国土数値情報（鉄道データ）」） |
 | GET | `/api/v1/options` | 絞り込みの選択肢（都道府県・施設種別・診療科目など） |
 | GET | `/api/v1/exports` | 一括ダウンロードのファイル一覧（都道府県ごと・全体の CSV / JSON Lines） |
 
@@ -260,6 +261,19 @@ GET /api/v1/medical-facilities?open_at=2026-10-05T10:30&latitude=35.681236&longi
 GET /api/v1/holidays?from=2026-01-01&to=2026-12-31
 ```
 
+### 駅の近くの施設
+
+`GET /api/v1/stations?name=春日` で駅の位置を調べ、その `latitude`・`longitude` を一覧APIに渡すと、駅の近くの施設を検索できます。
+
+- 末尾の「駅」の有無、全角半角、「ヶ」と「ケ」の違いは区別しません。一致する駅がなければ、その語で始まる駅を名前の短い順に返します（最大20件）。
+- 複数の路線が乗り入れる駅は1件にまとめ、`lines` に路線を並べます。同じ名前の駅が各地にあるときは、`prefecture`・`municipality` と路線で見分けます（`prefecture_code` で絞り込めます）。
+- `prefecture`・`municipality` は駅の近く（約3km以内）の施設から判定したもので、境界の近くでは隣の市区町村になることがあります。
+
+```http
+GET /api/v1/stations?name=春日&prefecture_code=13
+GET /api/v1/medical-facilities?latitude=35.709235&longitude=139.75251&radius=500&open_at=2026-11-14T15:00
+```
+
 ### 施設数の集計
 
 絞り込んだ施設を、月・市区町村・診療科目ごとに数えます。絞り込みの条件は一覧APIと同じです（`prefecture_code`・`municipality_code`・`institution_type`・`status`・`department_category`・`designation_reason`・`designated_from` / `designated_to`・`e_prescription`）。
@@ -435,7 +449,7 @@ vendor/bin/sail php vendor/bin/phpstan analyse --memory-limit=1G   # 静的解�
 
 各局の出典URLは、すべてのレスポンスの `meta.attribution.sources` に含めています。
 
-市区町村（`municipality`）と座標（`location`）は、デジタル庁の[アドレス・ベース・レジストリ](https://www.digital.go.jp/policies/base_registry_address)（CC BY 4.0）を加工して作成しています。出典は `meta.attribution.address_source` にあります。町丁目までしか求められない施設の座標と、施設の診療時間・休診日・フリガナ（`name_kana`）・ホームページ（`website_url`）は、厚生労働省の[医療情報ネットのオープンデータ](https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/newpage_43373.html)（PDL1.0）を加工して作成しています（`meta.attribution.medical_info_net_source`）。そのどちらでも町丁目までしか求められない病院・診療所・歯科診療所の座標は、国土交通省の[国土数値情報（医療機関データ）](https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-P04-2020.html)（CC BY 4.0）を加工して作成しています（`meta.attribution.national_land_source`）。集計APIの市区町村の人口（`population`）は、総務省の[住民基本台帳に基づく人口、人口動態及び世帯数](https://www.soumu.go.jp/main_sosiki/jichi_gyousei/daityo/jinkou_jinkoudoutai-setaisuu.html)（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.population_source`）。施設の電子処方箋への対応（`e_prescription`）は、厚生労働省の[電子処方せん対応の医療機関・薬局リスト](https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/denshishohousen_taioushisetsu.html)（PDL1.0）を加工して作成しています（`meta.attribution.e_prescription_source`）。祝日（`/api/v1/holidays`、`open_at` の判定）は、内閣府の[「国民の祝日について」](https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html)の祝日一覧（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.holiday_source`）。
+市区町村（`municipality`）と座標（`location`）は、デジタル庁の[アドレス・ベース・レジストリ](https://www.digital.go.jp/policies/base_registry_address)（CC BY 4.0）を加工して作成しています。出典は `meta.attribution.address_source` にあります。町丁目までしか求められない施設の座標と、施設の診療時間・休診日・フリガナ（`name_kana`）・ホームページ（`website_url`）は、厚生労働省の[医療情報ネットのオープンデータ](https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/newpage_43373.html)（PDL1.0）を加工して作成しています（`meta.attribution.medical_info_net_source`）。そのどちらでも町丁目までしか求められない病院・診療所・歯科診療所の座標は、国土交通省の[国土数値情報（医療機関データ）](https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-P04-2020.html)（CC BY 4.0）を加工して作成しています（`meta.attribution.national_land_source`）。集計APIの市区町村の人口（`population`）は、総務省の[住民基本台帳に基づく人口、人口動態及び世帯数](https://www.soumu.go.jp/main_sosiki/jichi_gyousei/daityo/jinkou_jinkoudoutai-setaisuu.html)（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.population_source`）。施設の電子処方箋への対応（`e_prescription`）は、厚生労働省の[電子処方せん対応の医療機関・薬局リスト](https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/denshishohousen_taioushisetsu.html)（PDL1.0）を加工して作成しています（`meta.attribution.e_prescription_source`）。祝日（`/api/v1/holidays`、`open_at` の判定）は、内閣府の[「国民の祝日について」](https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html)の祝日一覧（政府標準利用規約、CC BY 4.0 互換）を加工して作成しています（`meta.attribution.holiday_source`）。駅の位置（`/api/v1/stations`）は、国土交通省の[国土数値情報（鉄道データ）](https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-2025.html)（CC BY 4.0）を加工して作成しています（`meta.attribution.station_source`）。
 
 - **免責**: データの正確性・完全性は保証しません。最新かつ正確な情報は、各地方厚生局の公表資料を確認してください。
 - **個人名は提供しません**: 元データの開設者名・管理者名は個人名を含むため、APIでは返しません。

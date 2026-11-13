@@ -134,6 +134,7 @@ docker compose exec scheduler php artisan population:import         # 市区町�
 docker compose exec scheduler php artisan e-prescriptions:import     # 電子処方箋の対応施設（約15秒）
 docker compose exec scheduler php artisan facilities:geocode   # 座標を付与
 docker compose exec scheduler php artisan rhb:export        # 一括ダウンロードのファイルを作成
+docker compose exec scheduler php artisan stations:import   # 駅（約20秒。座標の付与の後に）
 ```
 
 - `facilities:geocode` は、初回にアドレス・ベース・レジストリのファイルを取得します全国で約3.4GB、初回は1時間前後。翌日以降は新規・移転した施設だけを処理します（全国に散らばった200件で約8分。対象の施設がない日はすぐ終わります）。PHP の既定のメモリ上限（128MB）で動きます。ファイルは `storage-app` ボリュームに残り、翌日以降は変わったものだけを取得します。
@@ -385,6 +386,16 @@ docker compose run --rm scheduler php artisan facilities:assign-opening-hours --
 
 - 値が入った施設（ローカルでは約19万件）の `updated_at` が動きます。一括ダウンロードは翌朝の `rhb:export` で作り直されます。
 - `medical-info-net:import --force` は、座標が町丁目・医療情報ネット・国土数値情報・なしの施設を、次の 06:30 の `facilities:geocode` で付け直す対象にします（座標が実際に変わった施設だけ `updated_at` が動きます）。
+
+### 駅の検索（初回）
+
+駅の検索（`/api/v1/stations`）を含む版へ初めて更新したときは、`migrate` の後に次を一度だけ実行します（全国約1万駅で約20秒）。駅の都道府県・市区町村は近くの施設から付けるため、施設の座標が入った後に実行します。
+
+```bash
+docker compose run --rm scheduler php artisan stations:import
+```
+
+- 国土数値情報（鉄道）は年1回の公開です。新しい版が出たら、`config/national_land.php` の `stations` の URL を変えてデプロイし、もう一度実行します。
 
 ## 4. バックアップ
 

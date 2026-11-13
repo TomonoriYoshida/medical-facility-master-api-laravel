@@ -43,6 +43,11 @@ trait ProvidesAttribution
                 'name' => '「国土数値情報（医療機関データ）」（国土交通省）を加工して作成',
                 'url' => 'https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-P04-2020.html',
             ],
+            // 駅の位置の出典（国土交通省、CC BY 4.0）。駅の検索APIに使う。
+            'station_source' => [
+                'name' => '「国土数値情報（鉄道データ）」（国土交通省）を加工して作成',
+                'url' => config()->string('national_land.stations.page_url'),
+            ],
             // 市区町村の人口の出典（総務省、政府標準利用規約・CC BY 4.0 互換）。集計APIの人口あたりの件数に使う。
             'population_source' => [
                 'name' => '総務省「住民基本台帳に基づく人口、人口動態及び世帯数」（市区町村別）を加工して作成',

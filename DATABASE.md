@@ -166,6 +166,22 @@ CSVを更新してシーダーを再実行したあとは、`facilities:assign-m
 
 作り方: 診療科ごと・曜日ごとに、受付時間があれば受付時間、なければ診療時間を使い、全診療科を重ねて1日の時間帯にまとめる（どれかの科が開いていれば開いている）。毎週の休み・祝日の休みは、時刻が載っていてもその曜日の行を作らない（安全側）。自由記述の休み（年末年始など）は使わない。インデックス: `(medical_facility_id, day, opens)`、`(day, opens, closes, weeks, medical_facility_id)`（`open_at`用。判定に使う列をすべて含むので、全国の`open_at`検索の件数取得がローカルで約0.3秒→約0.09秒）。全国で約164万行、作り直しはローカルで約50秒（2026-10-05計測）。
 
+## `railway_stations`
+
+国土交通省「国土数値情報（鉄道）」（N02、2025年版。CC BY 4.0）の駅。路線ごとに1行で、複数の路線が乗り入れる駅は`group_code`が同じ行になる。`GET /api/v1/stations`が駅名で引き、`group_code`ごとに1件にまとめて返す。年1回の公開のため定期実行はせず、`config/national_land.php`の`stations`を新しい版に向けて`stations:import`を手で実行する（丸ごと入れ替える。全国約1万駅で約20秒）。範囲（`RHB_PREFECTURES`）に関係なく全国の駅を入れる。
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| `id` | bigint (PK) | 内部主キー |
+| `station_code` | char(6) | 駅コード（`N02_005c`）。ユニーク。元データでは1つの駅のホームが複数の線に分かれていることがある（全国で65駅）ため、まとめて1行にする |
+| `group_code` | char(6) | グループコード（`N02_005g`）。乗り換えできる同じ駅の各路線で同じ値 |
+| `name` | string | 駅名（元データのまま。「市ヶ谷」など） |
+| `name_normalized` | string | `StationNameNormalizer`で正規化した駅名（NFKC・異体字、空白を除き「ヶ」「ヵ」を「ケ」「カ」に）。照合順序は`utf8mb4_bin`（既定の`utf8mb4_unicode_ci`では「ハ」と「バ」、ひらがなとカタカナが同じとみなされるため）。インデックスあり |
+| `line_name` / `operator_name` | string | 路線名（`N02_003`）・事業者名（`N02_004`） |
+| `prefecture_code` / `municipality_code` | char(2) / char(5) | 元データにないため、駅（`group_code`の各路線の位置の平均）から約3km以内で最も近い、市区町村が分かっている施設のもの。同じグループの路線はすべて同じ値になる。近くに施設がなければnull（範囲外の都道府県の駅など）。境界の近くでは隣の市区町村になることがある。同じ名前の駅を見分けるための目安 |
+| `latitude` / `longitude` | decimal(10,6) | ホームの線の長さの半分の地点（線が複数あればその平均） |
+| `created_at` / `updated_at` | datetime | |
+
 ## `public_holidays`
 
 内閣府「国民の祝日について」の祝日一覧（政府標準利用規約、CC BY 4.0 互換）。1955年から翌年末まで（約1,070日。振替休日・国民の休日を含む）。`holidays:import`が毎月4日に丸ごと入れ替える（1,000日未満しか読めなければ失敗させ、前の一覧を残す）。`GET /api/v1/holidays`で返し、`open_at`ではこの日を「祝」の時刻で判定する。
@@ -310,6 +326,8 @@ Observerは`name`/`address`が変わった時しか正規化カラムを再計�
 市区町村の人口（`municipality_populations`）は総務省のサイトのコンテンツで、政府標準利用規約（CC BY 4.0 互換）に従い、出典を記載すれば加工・再配布できる。`meta.attribution.population_source`に出典を含めている。
 
 国土数値情報（医療機関）（`national_land_medical_locations`）はCC BY 4.0で、出典と加工の旨を記載すれば加工・再配布できる。`meta.attribution.national_land_source`に「「国土数値情報（医療機関データ）」（国土交通省）を加工して作成」と出典URLを含めている。
+
+国土数値情報（鉄道）（`railway_stations`）も同じくCC BY 4.0で、`meta.attribution.station_source`に「「国土数値情報（鉄道データ）」（国土交通省）を加工して作成」と出典URLを含めている。
 
 APIでは次のように扱っている。
 

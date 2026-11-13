@@ -122,6 +122,7 @@ class OpenApiDocumentTest extends TestCase
         $this->assertNotEmpty($data('/v1/stats/facilities')['examples']);
         $this->assertNotEmpty($data('/v1/stats/facility-events')['examples']);
         $this->assertNotEmpty($data('/v1/holidays')['examples']);
+        $this->assertNotEmpty($data('/v1/stations')['examples']);
         $this->assertNotEmpty($data('/v1/exports')['properties']['files']['examples']);
         $this->assertNotEmpty($data('/v1/medical-facilities/{medicalFacility}/opening-hours')['properties']['schedules']['examples']);
 
