@@ -7,13 +7,16 @@
 # and renew a Let's Encrypt certificate automatically.
 FROM dunglas/frankenphp:1-php8.5-trixie
 
-# intl: ItaijiNormalizer (Normalizer), zip: RhbXlsxReader / bundle expanders,
-# pcntl: lets queue:work stop gracefully between jobs on SIGTERM.
-# mariadb-client provides the `mysql` command that `migrate` uses to load
-# database/schema/mysql-schema.sql into an empty database.
+# intl: ItaijiNormalizer (Normalizer), zip: RhbXlsxReader / bundle expanders
+# (and Composer's downloads), pcntl: lets queue:work stop gracefully between
+# jobs on SIGTERM. mariadb-client provides the `mysql` command that `migrate`
+# uses to load database/schema/mysql-schema.sql into an empty database.
+# `upgrade` takes the Debian security fixes released since the base image
+# was built, so every build (deploys use --pull) carries the latest ones.
 RUN install-php-extensions pdo_mysql intl zip bcmath pcntl opcache \
     && apt-get update \
-    && apt-get install -y --no-install-recommends mariadb-client unzip \
+    && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends mariadb-client \
     && rm -rf /var/lib/apt/lists/*
 
 RUN cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
@@ -36,15 +39,18 @@ COPY <<'EOF' /etc/mysql/conf.d/zz-client.cnf
 skip-ssl
 EOF
 
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-
 WORKDIR /app
 
+# Composer is mounted only while these steps run, so it is not in the image:
+# nothing needs it at runtime, and one less tool is left for an intruder.
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-scripts --no-autoloader --no-interaction --prefer-dist
+RUN --mount=type=bind,from=composer:2,source=/usr/bin/composer,target=/usr/bin/composer \
+    composer install --no-dev --no-scripts --no-autoloader --no-interaction --prefer-dist \
+    && rm -rf /root/.composer /root/.cache/composer
 
 COPY . .
-RUN composer dump-autoload --optimize --classmap-authoritative --no-dev \
+RUN --mount=type=bind,from=composer:2,source=/usr/bin/composer,target=/usr/bin/composer \
+    composer dump-autoload --optimize --classmap-authoritative --no-dev \
     && php artisan package:discover --ansi
 
 # Configuration comes from environment variables at runtime (compose's
