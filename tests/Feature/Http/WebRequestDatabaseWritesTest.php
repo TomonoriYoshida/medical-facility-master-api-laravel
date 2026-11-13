@@ -66,6 +66,19 @@ class WebRequestDatabaseWritesTest extends TestCase
             $this->assertLessThan(400, $this->get($uri)->getStatusCode(), "{$uri} failed");
         }
 
+        // The MCP endpoint, which runs the API's controllers in-process.
+        $mcpHeaders = ['Accept' => 'application/json, text/event-stream', 'MCP-Protocol-Version' => '2025-11-25'];
+        foreach ([
+            ['method' => 'initialize', 'params' => ['protocolVersion' => '2025-11-25', 'capabilities' => [], 'clientInfo' => ['name' => 'test', 'version' => '1']]],
+            ['method' => 'tools/call', 'params' => ['name' => 'search_facilities', 'arguments' => ['keyword' => '病院', 'open_at' => '2026-10-13T10:00']]],
+            ['method' => 'tools/call', 'params' => ['name' => 'get_facility', 'arguments' => ['id' => $facility->id]]],
+            ['method' => 'tools/call', 'params' => ['name' => 'find_stations', 'arguments' => ['name' => '春日']]],
+        ] as $index => $message) {
+            $response = $this->postJson('/mcp', ['jsonrpc' => '2.0', 'id' => $index, ...$message], $mcpHeaders);
+            $response->assertOk();
+            $this->assertNotTrue($response->json('result.isError'), "{$message['method']} failed");
+        }
+
         $this->assertNotEmpty($writes, 'the rate limiter should have written the cache table');
         foreach ($writes as $sql) {
             $this->assertMatchesRegularExpression('/^\s*(insert( ignore)? into|update|delete from)\s+`?cache`?\s/i', $sql, "a web request wrote outside the cache table: {$sql}");

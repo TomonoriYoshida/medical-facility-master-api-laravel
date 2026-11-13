@@ -39,6 +39,7 @@
 | GET | `/api/v1/stats/facility-events` | 新規・廃止の件数の集計（月・市区町村ごと） |
 | GET | `/api/v1/holidays` | 祝日の一覧（内閣府の「国民の祝日」） |
 | GET | `/api/v1/stations` | 駅の検索（駅名から位置。国土交通省「国土数値情報（鉄道データ）」） |
+| POST | `/mcp` | MCP サーバー（Claude などの AI から施設を探す。下記「AI から使う（MCP）」） |
 | GET | `/api/v1/options` | 絞り込みの選択肢（都道府県・施設種別・診療科目など） |
 | GET | `/api/v1/exports` | 一括ダウンロードのファイル一覧（都道府県ごと・全体の CSV / JSON Lines） |
 
@@ -273,6 +274,23 @@ GET /api/v1/holidays?from=2026-01-01&to=2026-12-31
 GET /api/v1/stations?name=春日&prefecture_code=13
 GET /api/v1/medical-facilities?latitude=35.709235&longitude=139.75251&radius=500&open_at=2026-11-14T15:00
 ```
+
+### AI から使う（MCP）
+
+`/mcp` は [MCP](https://modelcontextprotocol.io/)（Streamable HTTP）のサーバーです。Claude Desktop や Claude Code などに追加すると、「春日駅の近くで土曜の15時に開いている皮膚科は？」のような質問に、AI がこの API で施設を探して答えます。認証は不要で、読み取り専用です（IP アドレスごとに1分30回まで。`MCP_RATE_LIMIT_PER_MINUTE`）。
+
+```bash
+claude mcp add --transport http medical-facility https://<ホスト>/mcp
+```
+
+| ツール | 内容 |
+|---|---|
+| `find_stations` | 駅名から駅の位置を調べる（`/api/v1/stations`） |
+| `search_facilities` | 指定中の施設を、場所・診療科・施設種別・受付中の日時で探す（`/api/v1/medical-facilities` を AI 向けに項目を絞って返す。1ページ最大20件、半径最大10km） |
+| `get_facility` | 施設の詳細と診療時間・定休日（`/api/v1/medical-facilities/{id}` と `/opening-hours`） |
+
+- ツールは API のコントローラーを同じプロセスで呼ぶため、検索の条件・検証・結果は API と同じです。
+- サーバーの説明（instructions）で、データが最新とは限らないこと、受診前に施設へ確かめること、病状の判断はしないこと、出典を示すことを AI に伝えています。
 
 ### 施設数の集計
 
