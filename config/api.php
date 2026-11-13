@@ -44,6 +44,10 @@ return [
 
     'export_downloads_per_hour' => (int) env('EXPORT_DOWNLOADS_PER_HOUR', 30),
 
+    // The MCP endpoint (/mcp), also outside the API's limiter. One question
+    // to an AI client is a few requests (initialize, tool calls).
+    'mcp_rate_limit_per_minute' => (int) env('MCP_RATE_LIMIT_PER_MINUTE', 30),
+
     // Where the rendered docs pages are kept (App\Http\Middleware\CachesDocsResponse).
     'docs_cache_store' => env('DOCS_CACHE_STORE', 'file'),
 

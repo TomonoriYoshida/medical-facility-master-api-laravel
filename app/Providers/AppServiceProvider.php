@@ -75,6 +75,9 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('docs', fn (Request $request): Limit => Limit::perMinute(config('api.docs_rate_limit_per_minute'))
             ->by($request->ip()));
 
+        RateLimiter::for('mcp', fn (Request $request): Limit => Limit::perMinute(config('api.mcp_rate_limit_per_minute'))
+            ->by($request->ip()));
+
         RateLimiter::for('exports', fn (Request $request): Limit => Limit::perHour(config('api.export_downloads_per_hour'))
             ->by($request->ip()));
     }

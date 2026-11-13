@@ -56,7 +56,7 @@ return Application::configure(basePath: dirname(__DIR__))
             503 => 'ただいまメンテナンス中です。しばらくしてから、もう一度お試しください。',
         ];
 
-        $exceptions->render(fn (HttpExceptionInterface $e, Request $request) => $request->is('api/*') && isset($messages[$e->getStatusCode()])
+        $exceptions->render(fn (HttpExceptionInterface $e, Request $request) => $request->is('api/*', 'mcp') && isset($messages[$e->getStatusCode()])
             ? response()->json(['message' => $messages[$e->getStatusCode()]], $e->getStatusCode(), $e->getHeaders())
             : null);
 
