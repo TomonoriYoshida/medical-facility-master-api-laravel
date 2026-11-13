@@ -51,6 +51,12 @@ services:
             # with an automatic Let's Encrypt certificate; ":80" serves plain
             # HTTP only.
             SERVER_NAME: '${SERVER_NAME:?SERVER_NAME must be set in .env}'
+            # No request needs to run a program, so the web server's PHP
+            # cannot: a flaw that lets a request run code still cannot start
+            # a shell. Only the web workers get this; artisan (the entrypoint,
+            # worker, scheduler, `exec app php artisan`) runs the CLI as is.
+            FRANKENPHP_CONFIG: |
+                php_ini disable_functions exec,passthru,shell_exec,system,proc_open,popen,pcntl_exec
             # Access log (JSON, one file per day, kept 14 days). Caddy
             # redacts the Cookie and Authorization headers by default.
             # Where visitors searched from is left out: the location in the
