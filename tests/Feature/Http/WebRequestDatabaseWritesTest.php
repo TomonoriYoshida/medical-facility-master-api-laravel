@@ -47,6 +47,7 @@ class WebRequestDatabaseWritesTest extends TestCase
             '/docs/api.json',
             '/api/v1/options',
             '/api/v1/holidays',
+            '/api/v1/stations?name=春日',
             '/api/v1/medical-facilities',
             '/api/v1/medical-facilities?q=病院&total=capped',
             '/api/v1/medical-facilities?pagination=cursor',

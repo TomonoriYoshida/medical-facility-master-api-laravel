@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\Controllers\Api\V1\Concerns\EscapesLikePatterns;
 use App\Http\Controllers\Api\V1\Concerns\FiltersMedicalFacilities;
 use App\Http\Controllers\Api\V1\Concerns\ProvidesAttribution;
 use App\Http\Controllers\Controller;
@@ -23,6 +24,7 @@ use Illuminate\Support\Facades\DB;
 
 class MedicalFacilityController extends Controller
 {
+    use EscapesLikePatterns;
     use FiltersMedicalFacilities;
     use ProvidesAttribution;
 
@@ -301,15 +303,5 @@ class MedicalFacilityController extends Controller
     private function isCapped(int $total, ?int $totalCap): bool
     {
         return $totalCap !== null && $total >= $totalCap;
-    }
-
-    /**
-     * Makes user input match literally inside a LIKE pattern. Backslash
-     * must be escaped first, since it is MySQL's default LIKE escape
-     * character and the other replacements introduce new backslashes.
-     */
-    private function escapeLike(string $value): string
-    {
-        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
     }
 }
