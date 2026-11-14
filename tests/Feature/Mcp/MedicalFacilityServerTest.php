@@ -11,6 +11,7 @@ use App\Mcp\Tools\FindStationsTool;
 use App\Mcp\Tools\GetFacilityTool;
 use App\Mcp\Tools\SearchFacilitiesTool;
 use App\Models\MedicalFacility;
+use App\Models\MedicalFacilityOpeningPeriod;
 use App\Models\MedicalInfoNetLocation;
 use App\Models\MedicalInfoNetSchedule;
 use App\Models\RailwayStation;
@@ -89,12 +90,36 @@ class MedicalFacilityServerTest extends TestCase
             ->assertStructuredContentPath('facilities.0.id', $dermatology->id);
     }
 
+    public function test_search_facilities_judges_by_the_arrival_and_waits_for_an_opening(): void
+    {
+        // Monday 08:30, ~31m away on foot: arriving 08:31; opening at 09:00.
+        $near = $this->facility('近いクリニック', 35.7095, 139.7527);
+        MedicalFacilityOpeningPeriod::factory()->create(['medical_facility_id' => $near->id, 'day' => 1, 'opens' => '09:00:00', 'closes' => '12:00:00']);
+
+        MedicalFacilityServer::tool(SearchFacilitiesTool::class, [
+            'latitude' => 35.709222,
+            'longitude' => 139.752703,
+            'open_at' => '2026-10-05T08:30',
+            'travel' => 'walk',
+            'wait' => 30,
+        ])
+            ->assertOk()
+            ->assertStructuredContentPath('facilities.0.id', $near->id)
+            ->assertStructuredContentPath('facilities.0.arrives_at', '2026-10-05T08:31:00+09:00')
+            ->assertStructuredContentPath('facilities.0.opens_at', '2026-10-05T09:00:00+09:00')
+            ->assertStructuredContentPath('facilities.0.open_until', '2026-10-05T12:00:00+09:00');
+    }
+
     public function test_search_facilities_reports_invalid_arguments(): void
     {
         MedicalFacilityServer::tool(SearchFacilitiesTool::class, ['per_page' => 21])
             ->assertHasErrors(['per_page は20以下にしてください。']);
         MedicalFacilityServer::tool(SearchFacilitiesTool::class, ['radius' => 10001])
             ->assertHasErrors(['radius は10000メートル以下にしてください。']);
+        MedicalFacilityServer::tool(SearchFacilitiesTool::class, ['wait' => 90, 'open_at' => '2026-10-05T08:30', 'latitude' => 35.7, 'longitude' => 139.7])
+            ->assertHasErrors(['wait は0〜60（分）にしてください。']);
+        MedicalFacilityServer::tool(SearchFacilitiesTool::class, ['travel' => 'walk', 'open_at' => '2026-10-05T08:30', 'keyword' => '文京区'])
+            ->assertHasErrors(['travel と wait は、open_at（出発の日時）と latitude・longitude（出発地点）と一緒に指定してください。地名からなら find_stations で位置を求めます。']);
         // The API's own validation, passed on.
         MedicalFacilityServer::tool(SearchFacilitiesTool::class, ['open_at' => 'いま'])
             ->assertHasErrors(['open_at は正しい日付にしてください。']);

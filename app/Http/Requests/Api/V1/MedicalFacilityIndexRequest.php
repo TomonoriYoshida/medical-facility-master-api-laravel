@@ -143,6 +143,19 @@ class MedicalFacilityIndexRequest extends FormRequest
             'open_at' => ['sometimes', 'date'],
 
             /**
+             * 移動手段（`walk`: 徒歩、`car`: 車）。`open_at` と `latitude`・`longitude` と組み合わせ、`open_at` を出発時刻として、
+             * 施設ごとに到着の目安の時刻で受付中かを判定する。到着の目安は直線距離を1.3倍し、徒歩は分速80m、車は時速20kmで割った目安。
+             * 各施設に到着の目安 `arrives_at` が付く
+             */
+            'travel' => ['sometimes', Rule::in(['walk', 'car'])],
+
+            /**
+             * 到着（`travel` がなければ `open_at`）から何分以内に受付が始まる施設も含めるか（0〜60、デフォルト0）。`open_at` と `latitude`・`longitude` と組み合わせる。
+             * 到着の時点でまだ受付前の施設には、受付が始まる日時 `opens_at` が付く
+             */
+            'wait' => ['sometimes', 'integer', 'min:0', 'max:60'],
+
+            /**
              * 検索地点の緯度（世界測地系）。`longitude` と組み合わせ、`radius` 以内の施設を近い順に返す
              * （`sort` を指定した場合はその順）。各施設に `distance` が付く
              */
@@ -193,6 +206,10 @@ class MedicalFacilityIndexRequest extends FormRequest
     }
 
     /**
+     * `travel` and `wait` judge facilities around a departure time and place,
+     * so they come with `open_at` and `latitude`/`longitude` (a nearby search
+     * also keeps them from weighing every facility in Japan).
+     *
      * Cursor pagination resumes after the last row's values of the ordering
      * columns, so they must be non-null and unique together: id, or
      * updated_at then id. designated_on can be null, and a nearby search's
@@ -203,6 +220,15 @@ class MedicalFacilityIndexRequest extends FormRequest
     public function after(): array
     {
         return [
+            function (Validator $validator): void {
+                if ($this->filled('travel') && (! $this->filled('open_at') || ! $this->filled('latitude') || ! $this->filled('longitude'))) {
+                    $validator->errors()->add('travel', 'travel は open_at（出発時刻）と latitude・longitude（出発地点）と一緒に指定してください。');
+                }
+
+                if ($this->filled('wait') && (! $this->filled('open_at') || ! $this->filled('latitude') || ! $this->filled('longitude'))) {
+                    $validator->errors()->add('wait', 'wait は open_at と latitude・longitude と一緒に指定してください。');
+                }
+            },
             function (Validator $validator): void {
                 if ($this->input('pagination') !== 'cursor') {
                     return;

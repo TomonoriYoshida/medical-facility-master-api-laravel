@@ -17,6 +17,7 @@ use ArrayObject;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -968,6 +969,97 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $this->getJson('/api/v1/medical-facilities?open_at=now')
             ->assertUnprocessable()
             ->assertJsonValidationErrors('open_at');
+    }
+
+    public function test_travel_judges_each_facility_at_its_estimated_arrival(): void
+    {
+        // Monday 08:30. 1,500m on foot is ~25 minutes (1,500 x 1.3 / 80), by car ~6.
+        $closingSoon = $this->openNear(1500, [[1, '08:00:00', '08:40:00']]);
+        $opensAtNine = $this->openNear(1500, [[1, '09:00:00', '12:00:00']]);
+
+        $this->assertSame([], $this->nearbyOpen('2026-10-05T08:30', ['travel' => 'walk'])->json('data'));
+
+        $byCar = $this->nearbyOpen('2026-10-05T08:30', ['travel' => 'car']);
+        $this->assertSame([$closingSoon->id], $byCar->json('data.*.id'));
+        $byCar->assertJsonPath('data.0.arrives_at', '2026-10-05T08:36:00+09:00');
+        $byCar->assertJsonPath('data.0.open_until', '2026-10-05T08:40:00+09:00');
+        $byCar->assertJsonMissingPath('data.0.opens_at');
+        $this->assertNotContains($opensAtNine->id, $byCar->json('data.*.id'));
+    }
+
+    public function test_wait_also_returns_facilities_opening_shortly_after_the_arrival(): void
+    {
+        // Monday 08:30, 200m on foot: arriving 08:34.
+        $opensAtNine = $this->openNear(200, [[1, '09:00:00', '12:00:00']]);
+        $this->openNear(200, [[1, '10:00:00', '12:00:00']]);
+
+        $this->assertSame([], $this->nearbyOpen('2026-10-05T08:30', ['travel' => 'walk'])->json('data'));
+
+        $waiting = $this->nearbyOpen('2026-10-05T08:30', ['travel' => 'walk', 'wait' => 30]);
+        $this->assertSame([$opensAtNine->id], $waiting->json('data.*.id'));
+        $waiting->assertJsonPath('data.0.arrives_at', '2026-10-05T08:34:00+09:00');
+        $waiting->assertJsonPath('data.0.opens_at', '2026-10-05T09:00:00+09:00');
+        $waiting->assertJsonPath('data.0.open_until', '2026-10-05T12:00:00+09:00');
+    }
+
+    public function test_wait_without_travel_counts_from_open_at(): void
+    {
+        $opensAtNine = $this->openNear(200, [[1, '09:00:00', '12:00:00']]);
+
+        $response = $this->nearbyOpen('2026-10-05T08:45', ['wait' => 15]);
+
+        $this->assertSame([$opensAtNine->id], $response->json('data.*.id'));
+        $response->assertJsonPath('data.0.opens_at', '2026-10-05T09:00:00+09:00');
+        $response->assertJsonMissingPath('data.0.arrives_at');
+    }
+
+    public function test_an_arrival_past_midnight_uses_the_next_days_hours(): void
+    {
+        // Monday 23:50, 1,500m on foot: arriving Tuesday 00:15.
+        $lateNight = $this->openNear(1500, [[1, '18:00:00', '24:00:00'], [2, '00:00:00', '02:00:00']]);
+        $this->openNear(1500, [[1, '18:00:00', '24:00:00']]);
+
+        $response = $this->nearbyOpen('2026-10-05T23:50', ['travel' => 'walk']);
+
+        $this->assertSame([$lateNight->id], $response->json('data.*.id'));
+        $response->assertJsonPath('data.0.arrives_at', '2026-10-06T00:15:00+09:00');
+        $response->assertJsonPath('data.0.open_until', '2026-10-06T02:00:00+09:00');
+    }
+
+    public function test_travel_and_wait_need_the_departure_time_and_place(): void
+    {
+        $this->getJson('/api/v1/medical-facilities?travel=walk&open_at=2026-10-05T08:30')->assertJsonValidationErrors('travel');
+        $this->getJson('/api/v1/medical-facilities?travel=walk&latitude=35.68&longitude=139.76')->assertJsonValidationErrors('travel');
+        $this->getJson('/api/v1/medical-facilities?travel=bike&open_at=2026-10-05T08:30&latitude=35.68&longitude=139.76')->assertJsonValidationErrors('travel');
+        $this->getJson('/api/v1/medical-facilities?wait=30')->assertJsonValidationErrors('wait');
+        $this->getJson('/api/v1/medical-facilities?wait=30&open_at=2026-10-05T08:30')->assertJsonValidationErrors('wait');
+        $this->getJson('/api/v1/medical-facilities?wait=61&open_at=2026-10-05T08:30&latitude=35.68&longitude=139.76')->assertJsonValidationErrors('wait');
+    }
+
+    /**
+     * A facility $meters north of the search point (35.68, 139.76), open in the given ranges.
+     *
+     * @param  list<array{int, string, string}>  $ranges  [day, opens, closes]
+     */
+    private function openNear(int $meters, array $ranges): MedicalFacility
+    {
+        $facility = MedicalFacility::factory()->create(['latitude' => 35.68 + $meters / 111_195, 'longitude' => 139.76]);
+
+        foreach ($ranges as [$day, $opens, $closes]) {
+            MedicalFacilityOpeningPeriod::factory()->create(['medical_facility_id' => $facility->id, 'day' => $day, 'opens' => $opens, 'closes' => $closes]);
+        }
+
+        return $facility;
+    }
+
+    /**
+     * @param  array<string, string|int>  $query
+     */
+    private function nearbyOpen(string $openAt, array $query): TestResponse
+    {
+        return $this->getJson('/api/v1/medical-facilities?'.http_build_query([
+            'latitude' => 35.68, 'longitude' => 139.76, 'radius' => 5000, 'open_at' => $openAt, ...$query,
+        ]))->assertOk();
     }
 
     private function openOn(int $day, string $opens, string $closes, int $weeks = OpeningPeriods::ALL_WEEKS): MedicalFacility

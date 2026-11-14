@@ -137,11 +137,23 @@ class MedicalFacilityResource extends JsonResource
             'distance' => $this->when($this->resource->getAttribute('distance') !== null, fn (): int => (int) round((float) $this->resource->getAttribute('distance'))),
             /**
              * `open_at` の日時から受付が続く終わりの日時（日本時間）。日付をまたぐ受付は翌日の終わりまで。
-             * `open_at` を指定した検索のときだけ含まれる
+             * `open_at` を指定した検索のときだけ含まれる。`travel`・`wait` があれば、到着の時点で受付中か、その後に始まる受付の終わりの日時
              *
              * @example 2026-10-05T19:00:00+09:00
              */
             'open_until' => $this->when($this->resource->getAttribute('open_until') !== null, fn (): string => $this->resource->getAttribute('open_until')->toIso8601String()),
+            /**
+             * 到着の目安の日時（日本時間）。`open_at` を出発時刻として、直線距離から見積もった目安。`travel` を指定した検索のときだけ含まれる
+             *
+             * @example 2026-10-05T08:52:00+09:00
+             */
+            'arrives_at' => $this->when($this->resource->getAttribute('arrives_at') !== null, fn (): string => $this->resource->getAttribute('arrives_at')->toIso8601String()),
+            /**
+             * 到着の時点ではまだ受付前の施設の、受付が始まる日時（日本時間）。`wait` を指定した検索で、到着からその分数以内に受付が始まる施設だけに含まれる
+             *
+             * @example 2026-10-05T09:00:00+09:00
+             */
+            'opens_at' => $this->when($this->resource->getAttribute('opens_at') !== null, fn (): string => $this->resource->getAttribute('opens_at')->toIso8601String()),
             /**
              * 電話番号（区切りをハイフンに揃えたもの）
              *
