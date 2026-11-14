@@ -971,6 +971,25 @@ class IndexMedicalFacilityControllerTest extends TestCase
             ->assertJsonValidationErrors('open_at');
     }
 
+    public function test_nearby_search_narrows_the_area_with_the_location_index_for_both_page_and_count(): void
+    {
+        // One in the area, so that the page is fetched after the count.
+        MedicalFacility::factory()->create(['latitude' => 35.681, 'longitude' => 139.761]);
+        $queries = new ArrayObject;
+        DB::listen(function (QueryExecuted $query) use ($queries): void {
+            if (str_contains($query->sql, 'ST_Distance_Sphere')) {
+                $queries[] = $query->sql;
+            }
+        });
+
+        $this->getJson('/api/v1/medical-facilities?latitude=35.68&longitude=139.76&radius=20000')->assertOk();
+
+        $this->assertCount(2, $queries);
+        foreach ($queries as $sql) {
+            $this->assertStringContainsString('force index (medical_facilities_latitude_longitude_index)', $sql);
+        }
+    }
+
     public function test_travel_judges_each_facility_at_its_estimated_arrival(): void
     {
         // Monday 08:30. 1,500m on foot is ~25 minutes (1,500 x 1.3 / 80), by car ~6.
