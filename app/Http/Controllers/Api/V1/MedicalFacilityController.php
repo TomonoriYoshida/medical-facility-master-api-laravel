@@ -34,6 +34,9 @@ class MedicalFacilityController extends Controller
     /** How long a `q` search's total is reused; see rememberSearchTotal(). */
     private const int SEARCH_TOTAL_CACHE_SECONDS = 3600;
 
+    /** The (latitude, longitude) index a nearby search narrows the area with; see applyNearby(). */
+    private const string LOCATION_INDEX = 'medical_facilities_latitude_longitude_index';
+
     /** Meters per degree of latitude (and of longitude at the equator). */
     private const float METERS_PER_DEGREE = 111_320;
 
@@ -305,6 +308,14 @@ class MedicalFacilityController extends Controller
      * (latitude, longitude) index), then ST_Distance_Sphere measures the
      * real distance.
      *
+     * The index is forced: for a wide radius MySQL picks the status index
+     * instead (its estimate of active facilities is half the real count) and
+     * reads every active facility in Japan (~223,000 rows, ~0.66s) before
+     * keeping the area's. Measured in production (2026-11-15, around Tokyo
+     * Station, a page of 50): 20km with open_at 0.8-0.94s -> 0.29s, 50km
+     * 0.97s -> 0.58s, a keyword within 20km 0.73s -> 0.2s; 2km (the site's
+     * default) stays at ~20ms, as MySQL already chose the index there.
+     *
      * @param  Builder<MedicalFacility>  $query
      * @return Builder<MedicalFacility>
      */
@@ -315,6 +326,7 @@ class MedicalFacilityController extends Controller
         $distance = 'ST_Distance_Sphere(POINT(longitude, latitude), POINT(?, ?))';
 
         return $query
+            ->forceIndex(self::LOCATION_INDEX)
             ->select('medical_facilities.*')
             ->selectRaw("{$distance} AS distance", [$longitude, $latitude])
             ->whereBetween('latitude', [$latitude - $latitudeDelta, $latitude + $latitudeDelta])
