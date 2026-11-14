@@ -9,8 +9,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\MedicalFacilityIndexRequest;
 use App\Http\Resources\Api\V1\MedicalFacilityResource;
 use App\Models\MedicalFacility;
-use App\Services\MedicalInfoNet\ClosingTimes;
+use App\Services\MedicalInfoNet\ArrivalHours;
 use App\Services\MedicalInfoNet\OpeningMoment;
+use App\Services\MedicalInfoNet\TravelTime;
 use App\Services\Text\AddressNormalizer;
 use App\Services\Text\ItaijiNormalizer;
 use Closure;
@@ -39,7 +40,7 @@ class MedicalFacilityController extends Controller
     public function __construct(
         private readonly ItaijiNormalizer $itaijiNormalizer,
         private readonly AddressNormalizer $addressNormalizer,
-        private readonly ClosingTimes $closingTimes,
+        private readonly ArrivalHours $arrivalHours,
     ) {}
 
     /**
@@ -49,6 +50,8 @@ class MedicalFacilityController extends Controller
      * 吸収したあいまい検索です。`latitude`・`longitude` を指定すると、`radius` 以内の施設を近い順に返します。
      * `open_at` を指定すると、その日時に受付中の施設（厚生労働省「医療情報ネット」の診療時間で判定）だけを返し、
      * 各施設に受付が終わる日時 `open_until` を含めます。
+     * さらに `travel`（`walk` / `car`）を指定すると、`open_at` を出発時刻として、施設ごとに直線距離から見積もった到着の目安の時刻で判定し、
+     * `wait` を指定すると、到着からその分数以内に受付が始まる施設も含めます（到着の目安 `arrives_at`、受付が始まる日時 `opens_at` が付きます）。
      */
     public function index(MedicalFacilityIndexRequest $request): AnonymousResourceCollection
     {
@@ -60,7 +63,7 @@ class MedicalFacilityController extends Controller
         // same filters (and, for a cursor, pagination=cursor itself).
         if ($request->usesCursor()) {
             $cursorPaginator = $facilities->cursorPaginate($request->perPage())->withQueryString();
-            $this->addClosingTimes($cursorPaginator->getCollection(), $openAt);
+            $this->addClosingTimes($cursorPaginator->getCollection(), $openAt, $filters);
 
             return MedicalFacilityResource::collection($cursorPaginator)
                 ->additional(['meta' => ['attribution' => $this->attribution()]]);
@@ -73,7 +76,7 @@ class MedicalFacilityController extends Controller
             return $totalCap === null ? $counted->toBase()->getCountForPagination() : $this->countUpTo($counted, $totalCap);
         }));
 
-        $this->addClosingTimes($paginator->getCollection(), $openAt);
+        $this->addClosingTimes($paginator->getCollection(), $openAt, $filters);
 
         return MedicalFacilityResource::collection($paginator->withQueryString())
             ->additional(['meta' => [
@@ -121,6 +124,7 @@ class MedicalFacilityController extends Controller
             ->when($openAt, fn ($query, Carbon $at) => $this->applyOpenAt(
                 $query,
                 $at,
+                $filters,
                 checksInOrder: ! $forCounting && ! isset($filters['latitude'], $filters['longitude']),
             ))
             ->when(isset($filters['latitude'], $filters['longitude']), fn ($query) => $this->applyNearby(
@@ -152,21 +156,35 @@ class MedicalFacilityController extends Controller
     }
 
     /**
-     * Gives each facility on the page, open at $openAt, its closing time
-     * as `open_until`, looked up for the whole page at once.
+     * Gives each facility on the page its closing time as `open_until`,
+     * looked up for the whole page at once (ArrivalHours). Without `travel`
+     * and `wait` that is the range open at $openAt; with them, the range
+     * around each facility's arrival (see applyArrivalWindow()), with
+     * `arrives_at` when travelling and `opens_at` when it opens only after
+     * the arrival.
      *
      * @param  Collection<int, MedicalFacility>  $facilities
+     * @param  array<string, mixed>  $filters
      */
-    private function addClosingTimes(Collection $facilities, ?Carbon $openAt): void
+    private function addClosingTimes(Collection $facilities, ?Carbon $openAt, array $filters): void
     {
         if ($openAt === null) {
             return;
         }
 
-        $closingTimes = $this->closingTimes->at($openAt, $facilities->pluck('id')->all());
+        $travel = $filters['travel'] ?? null;
+        $wait = (int) ($filters['wait'] ?? 0);
+        $arrivals = $facilities->mapWithKeys(fn (MedicalFacility $facility): array => [
+            $facility->id => $travel === null
+                ? $openAt->copy()
+                : $openAt->copy()->addMinutes(TravelTime::minutes($travel, (float) $facility->getAttribute('distance'))),
+        ])->all();
+        $hours = $this->arrivalHours->at($arrivals, $wait);
 
         foreach ($facilities as $facility) {
-            $facility->setAttribute('open_until', $closingTimes[$facility->id] ?? null);
+            $facility->setAttribute('arrives_at', $travel === null ? null : $arrivals[$facility->id]);
+            $facility->setAttribute('opens_at', $hours[$facility->id]['opens_at'] ?? null);
+            $facility->setAttribute('open_until', $hours[$facility->id]['open_until'] ?? null);
         }
     }
 
@@ -187,10 +205,18 @@ class MedicalFacilityController extends Controller
      * locally for 50km around Tokyo; ~5s in production).
      *
      * @param  Builder<MedicalFacility>  $query
+     * @param  array<string, mixed>  $filters
      * @return Builder<MedicalFacility>
      */
-    private function applyOpenAt(Builder $query, Carbon $at, bool $checksInOrder): Builder
+    private function applyOpenAt(Builder $query, Carbon $at, array $filters, bool $checksInOrder): Builder
     {
+        $travel = $filters['travel'] ?? null;
+        $wait = (int) ($filters['wait'] ?? 0);
+
+        if ($travel !== null || $wait > 0) {
+            return $this->applyArrivalWindow($query, $at, $travel, $wait, $filters);
+        }
+
         $moment = OpeningMoment::at($at);
 
         return $query->whereExists(fn ($periods) => $periods
@@ -201,6 +227,52 @@ class MedicalFacilityController extends Controller
             ->where('opens', '<=', $moment->time)
             ->where('closes', '>', $moment->time)
             ->whereRaw('weeks & ? <> 0', [$moment->weekBit]));
+    }
+
+    /**
+     * Facilities with opening hours between each one's arrival and $wait
+     * minutes after it: open when reached, or opening shortly after. The
+     * arrival is $at plus the travel time estimated from the facility's
+     * straight-line distance (TravelTime), or $at itself without `travel`.
+     *
+     * Times are compared as seconds from the start of $at's day, so a range
+     * on the next day counts 86,400 more. The longest trip, 50 km on foot
+     * (the radius limit), is estimated at ~13.5 hours; with an hour's wait
+     * that is still well under a day, so the next day is as far as any
+     * arrival reaches. (A longer radius or slower speed would need a third day.)
+     *
+     * @param  Builder<MedicalFacility>  $query
+     * @param  array<string, mixed>  $filters
+     * @return Builder<MedicalFacility>
+     */
+    private function applyArrivalWindow(Builder $query, Carbon $at, ?string $travel, int $wait, array $filters): Builder
+    {
+        $at = $at->copy()->setTimezone('Asia/Tokyo');
+        $today = OpeningMoment::at($at);
+        $tomorrow = OpeningMoment::at($at->copy()->addDay()->startOfDay());
+
+        $arrival = '?';
+        $arrivalBindings = [$at->secondsSinceMidnight()];
+
+        if ($travel !== null) {
+            $distance = 'ST_Distance_Sphere(POINT(medical_facilities.longitude, medical_facilities.latitude), POINT(?, ?))';
+            $arrival = '(? + 60 * '.TravelTime::minutesSql($travel, $distance).')';
+            $arrivalBindings = [$at->secondsSinceMidnight(), (float) $filters['longitude'], (float) $filters['latitude']];
+        }
+
+        $onDay = fn (OpeningMoment $moment, int $offset) => fn ($periods) => $periods
+            ->where('day', $moment->day)
+            ->whereRaw('weeks & ? <> 0', [$moment->weekBit])
+            ->whereRaw("TIME_TO_SEC(opens) + {$offset} <= {$arrival} + ?", [...$arrivalBindings, $wait * 60])
+            ->whereRaw("TIME_TO_SEC(closes) + {$offset} > {$arrival}", $arrivalBindings);
+
+        return $query->whereExists(fn ($periods) => $periods
+            ->selectRaw('1')
+            ->from('medical_facility_opening_periods')
+            ->whereColumn('medical_facility_opening_periods.medical_facility_id', 'medical_facilities.id')
+            ->where(fn ($periods) => $periods
+                ->where($onDay($today, 0))
+                ->orWhere($onDay($tomorrow, 86400))));
     }
 
     /**
