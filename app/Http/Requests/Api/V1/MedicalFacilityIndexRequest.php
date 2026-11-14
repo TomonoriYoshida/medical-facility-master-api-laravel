@@ -208,7 +208,8 @@ class MedicalFacilityIndexRequest extends FormRequest
     /**
      * `travel` and `wait` judge facilities around a departure time and place,
      * so they come with `open_at` and `latitude`/`longitude` (a nearby search
-     * also keeps them from weighing every facility in Japan).
+     * also keeps them from weighing every facility in Japan). `wait=0` is no
+     * wait, the same as leaving it out, so it needs neither.
      *
      * Cursor pagination resumes after the last row's values of the ordering
      * columns, so they must be non-null and unique together: id, or
@@ -225,7 +226,7 @@ class MedicalFacilityIndexRequest extends FormRequest
                     $validator->errors()->add('travel', 'travel は open_at（出発時刻）と latitude・longitude（出発地点）と一緒に指定してください。');
                 }
 
-                if ($this->filled('wait') && (! $this->filled('open_at') || ! $this->filled('latitude') || ! $this->filled('longitude'))) {
+                if ((int) $this->input('wait') > 0 && (! $this->filled('open_at') || ! $this->filled('latitude') || ! $this->filled('longitude'))) {
                     $validator->errors()->add('wait', 'wait は open_at と latitude・longitude と一緒に指定してください。');
                 }
             },

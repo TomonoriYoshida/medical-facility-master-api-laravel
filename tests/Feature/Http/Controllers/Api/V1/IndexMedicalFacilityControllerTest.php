@@ -1034,6 +1034,8 @@ class IndexMedicalFacilityControllerTest extends TestCase
         $this->getJson('/api/v1/medical-facilities?wait=30')->assertJsonValidationErrors('wait');
         $this->getJson('/api/v1/medical-facilities?wait=30&open_at=2026-10-05T08:30')->assertJsonValidationErrors('wait');
         $this->getJson('/api/v1/medical-facilities?wait=61&open_at=2026-10-05T08:30&latitude=35.68&longitude=139.76')->assertJsonValidationErrors('wait');
+        // wait=0 is no wait, as if left out: fine without a place.
+        $this->getJson('/api/v1/medical-facilities?wait=0&open_at=2026-10-05T08:30')->assertOk();
     }
 
     /**
